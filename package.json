@@ -11,8 +11,13 @@
   "bugs": {
     "url": "https://github.com/okta/okta-signin-widget/issues"
   },
-  "files": ["dist"],
-  "browserslist": ["> 0.1%", "not ie <= 9"],
+  "files": [
+    "dist"
+  ],
+  "browserslist": [
+    "> 0.1%",
+    "not ie <= 9"
+  ],
   "main": "./dist/js/okta-sign-in.entry.js",
   "scripts": {
     "clean": "rimraf target && rimraf dist && rimraf build2",
@@ -44,7 +49,7 @@
     "test:enleaks": "run-p -r test:testcafe-en-leaks-setup \"test:testcafe-run-en-leaks\" -- 2>/dev/null",
     "protractor": "node ./scripts/update-se-drivers.js && protractor target/e2e/conf.js",
     "build:dev": "grunt build:dev",
-    "build:release": "grunt build:release",
+    "build:release": "grunt build:release --force",
     "build:webpack-dev": "webpack --config webpack.dev.config.js",
     "build:webpack-release": "webpack --config webpack.release.config.js",
     "build:webpack-e2e-app": "webpack target/e2e/app/app-using-osw-entry.js target/js/app-bundle.js",
