@@ -68,7 +68,7 @@ export default View.extend({
     return _.extend(this.settings.toJSON({ verbose: true }), { helpLinkUrl: helpLinkUrl });
   },
   postRender: function() {
-    this.$('.js-help-links').hide();
+    //this.$('.js-help-links').hide();
   },
   toggleLinks: function(e) {
     e.preventDefault();

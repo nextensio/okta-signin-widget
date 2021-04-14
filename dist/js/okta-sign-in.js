@@ -80531,8 +80531,7 @@ var _default = _okta.View.extend({
       helpLinkUrl: helpLinkUrl
     });
   },
-  postRender: function postRender() {
-    this.$('.js-help-links').hide();
+  postRender: function postRender() {//this.$('.js-help-links').hide();
   },
   toggleLinks: function toggleLinks(e) {
     var _this = this;
