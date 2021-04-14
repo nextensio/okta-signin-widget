@@ -16,7 +16,7 @@ const { Util } = internal.util;
 export default View.extend({
   template: hbs(
     '\
-      <a href="#" data-se="needhelp" aria-expanded="false" \
+      <a href="#" data-se="needhelp" aria-expanded="true" \
         aria-controls="help-links-container" class="link help js-help">\
       {{i18n code="needhelp" bundle="login"}}\
       </a>\

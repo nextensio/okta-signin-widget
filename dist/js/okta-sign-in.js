@@ -80298,11 +80298,11 @@ var _default = _okta.View.extend({
         "loc": {
           "start": {
             "line": 1,
-            "column": 440
+            "column": 439
           },
           "end": {
             "line": 1,
-            "column": 484
+            "column": 483
           }
         }
       })) + "</a></li>";
@@ -80329,11 +80329,11 @@ var _default = _okta.View.extend({
         "loc": {
           "start": {
             "line": 1,
-            "column": 539
+            "column": 538
           },
           "end": {
             "line": 1,
-            "column": 547
+            "column": 546
           }
         }
       }) : helper)) + "\" class=\"link js-custom\" rel=\"noopener noreferrer\" " + ((stack1 = lookupProperty(helpers, "if").call(alias1, depth0 != null ? lookupProperty(depth0, "target") : depth0, {
@@ -80345,11 +80345,11 @@ var _default = _okta.View.extend({
         "loc": {
           "start": {
             "line": 1,
-            "column": 598
+            "column": 597
           },
           "end": {
             "line": 1,
-            "column": 638
+            "column": 637
           }
         }
       })) != null ? stack1 : "") + ">" + alias4((helper = (helper = lookupProperty(helpers, "text") || (depth0 != null ? lookupProperty(depth0, "text") : depth0)) != null ? helper : alias2, (0, _typeof2.default)(helper) === alias3 ? helper.call(alias1, {
@@ -80359,11 +80359,11 @@ var _default = _okta.View.extend({
         "loc": {
           "start": {
             "line": 1,
-            "column": 639
+            "column": 638
           },
           "end": {
             "line": 1,
-            "column": 647
+            "column": 646
           }
         }
       }) : helper)) + "</a></li>";
@@ -80385,11 +80385,11 @@ var _default = _okta.View.extend({
         "loc": {
           "start": {
             "line": 1,
-            "column": 620
+            "column": 619
           },
           "end": {
             "line": 1,
-            "column": 630
+            "column": 629
           }
         }
       }) : helper)) + "\"";
@@ -80408,7 +80408,7 @@ var _default = _okta.View.extend({
         return undefined;
       };
 
-      return "<a href=\"#\" data-se=\"needhelp\" aria-expanded=\"false\" aria-controls=\"help-links-container\" class=\"link help js-help\">" + alias3((lookupProperty(helpers, "i18n") || depth0 && lookupProperty(depth0, "i18n") || alias2).call(alias1, {
+      return "<a href=\"#\" data-se=\"needhelp\" aria-expanded=\"true\" aria-controls=\"help-links-container\" class=\"link help js-help\">" + alias3((lookupProperty(helpers, "i18n") || depth0 && lookupProperty(depth0, "i18n") || alias2).call(alias1, {
         "name": "i18n",
         "hash": {
           "bundle": "login",
@@ -80418,11 +80418,11 @@ var _default = _okta.View.extend({
         "loc": {
           "start": {
             "line": 1,
-            "column": 116
+            "column": 115
           },
           "end": {
             "line": 1,
-            "column": 155
+            "column": 154
           }
         }
       })) + "</a><ul class=\"help-links js-help-links\" id=\"help-links-container\"><li><a href=\"#\" data-se=\"forgot-password\" class=\"link js-forgot-password\">" + alias3((lookupProperty(helpers, "i18n") || depth0 && lookupProperty(depth0, "i18n") || alias2).call(alias1, {
@@ -80435,11 +80435,11 @@ var _default = _okta.View.extend({
         "loc": {
           "start": {
             "line": 1,
-            "column": 296
+            "column": 295
           },
           "end": {
             "line": 1,
-            "column": 341
+            "column": 340
           }
         }
       })) + "</a></li>" + ((stack1 = lookupProperty(helpers, "if").call(alias1, (stack1 = depth0 != null ? lookupProperty(depth0, "features") : depth0) != null ? lookupProperty(stack1, "selfServiceUnlock") : stack1, {
@@ -80451,11 +80451,11 @@ var _default = _okta.View.extend({
         "loc": {
           "start": {
             "line": 1,
-            "column": 350
+            "column": 349
           },
           "end": {
             "line": 1,
-            "column": 500
+            "column": 499
           }
         }
       })) != null ? stack1 : "") + ((stack1 = lookupProperty(helpers, "each").call(alias1, (stack1 = depth0 != null ? lookupProperty(depth0, "helpLinks") : depth0) != null ? lookupProperty(stack1, "custom") : stack1, {
@@ -80467,11 +80467,11 @@ var _default = _okta.View.extend({
         "loc": {
           "start": {
             "line": 1,
-            "column": 500
+            "column": 499
           },
           "end": {
             "line": 1,
-            "column": 665
+            "column": 664
           }
         }
       })) != null ? stack1 : "") + "<li><a href=\"https://controller.nextensio.net/global/add/signup\" data-se=\"help-link\" class=\"link js-help-link\" rel=\"noopener noreferrer\" target=\"_blank\">New Customer ? Sign Up!</a></li></ul>";
