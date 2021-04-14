@@ -80397,7 +80397,6 @@ var _default = _okta.View.extend({
     "compiler": [8, ">= 4.3.0"],
     "main": function main(container, depth0, helpers, partials, data) {
       var stack1,
-          helper,
           alias1 = depth0 != null ? depth0 : container.nullContext || {},
           alias2 = container.hooks.helperMissing,
           alias3 = container.escapeExpression,
@@ -80475,38 +80474,7 @@ var _default = _okta.View.extend({
             "column": 665
           }
         }
-      })) != null ? stack1 : "") + "<li><a href=\"" + alias3((helper = (helper = lookupProperty(helpers, "helpLinkUrl") || (depth0 != null ? lookupProperty(depth0, "helpLinkUrl") : depth0)) != null ? helper : alias2, typeof helper === "function" ? helper.call(alias1, {
-        "name": "helpLinkUrl",
-        "hash": {},
-        "data": data,
-        "loc": {
-          "start": {
-            "line": 1,
-            "column": 678
-          },
-          "end": {
-            "line": 1,
-            "column": 693
-          }
-        }
-      }) : helper)) + "\" data-se=\"help-link\" class=\"link js-help-link\" rel=\"noopener noreferrer\" target=\"_blank\">" + alias3((lookupProperty(helpers, "i18n") || depth0 && lookupProperty(depth0, "i18n") || alias2).call(alias1, {
-        "name": "i18n",
-        "hash": {
-          "bundle": "login",
-          "code": "help"
-        },
-        "data": data,
-        "loc": {
-          "start": {
-            "line": 1,
-            "column": 783
-          },
-          "end": {
-            "line": 1,
-            "column": 818
-          }
-        }
-      })) + "</a></li></ul>";
+      })) != null ? stack1 : "") + "<li><a href=\"https://controller.nextensio.net/global/add/signup\" data-se=\"help-link\" class=\"link js-help-link\" rel=\"noopener noreferrer\" target=\"_blank\">New Customer ? Sign Up!</a></li></ul>";
     },
     "useData": true
   }),
