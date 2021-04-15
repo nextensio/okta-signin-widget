@@ -40,7 +40,7 @@ export default View.extend({
           </li>\
         {{/each}}\
         <li>\
-        <a href="https://controller.nextensio.net/global/add/signup" data-se="help-link" class="link js-help-link"\
+        <a href="https://controller.nextensio.net/home/signup" data-se="help-link" class="link js-help-link"\
           rel="noopener noreferrer" target="_blank">\
             New Customer ? Sign Up!\
         </a>\
