@@ -80474,7 +80474,7 @@ var _default = _okta.View.extend({
             "column": 664
           }
         }
-      })) != null ? stack1 : "") + "<li><a href=\"https://controller.nextensio.net/global/add/signup\" data-se=\"help-link\" class=\"link js-help-link\" rel=\"noopener noreferrer\" target=\"_blank\">New Customer ? Sign Up!</a></li></ul>";
+      })) != null ? stack1 : "") + "<li><a href=\"https://controller.nextensio.net/signup\" data-se=\"help-link\" class=\"link js-help-link\" rel=\"noopener noreferrer\" target=\"_blank\">New Customer ? Sign Up!</a></li></ul>";
     },
     "useData": true
   }),
