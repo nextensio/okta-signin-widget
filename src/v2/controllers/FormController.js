@@ -257,6 +257,7 @@ export default Controller.extend({
     }
 
     if(error?.rawIdxState) {
+      idxStateError = error;
       error = error.rawIdxState;
     }
 
@@ -268,15 +269,15 @@ export default Controller.extend({
     const showErrorBanner = !form?.isErrorCalloutCustomized(errorObj);
     // show error before updating app state.
     model.trigger('error', model, errorObj || { responseJSON: { errorSummary: String(error) } }, showErrorBanner);
-    idxStateError = Object.assign({}, error, {hasFormError: true});
+    idxStateError = Object.assign({}, idxStateError, {hasFormError: true});
 
     if (!showErrorBanner) {
       form.showCustomErrorCallout(errorObj);
     }
-    
+
     // TODO OKTA-408410: Widget should update the state on every new response. It should NOT do selective update.
     // For eg 429 rate-limit errors, we have to skip updating idx state, because error response is not an idx response.
-    if (Array.isArray(error?.neededToProceed) && error?.neededToProceed.length) {
+    if (Array.isArray(idxStateError?.neededToProceed) && idxStateError?.neededToProceed.length) {
       this.handleIdxResponse(idxStateError);
     }
   },
