@@ -15,7 +15,7 @@ import SuccessPageObject from '../framework/page-objects/SuccessPageObject';
 import TerminalPageObject from '../framework/page-objects/TerminalPageObject';
 import { getStateHandleFromSessionStorage, renderWidget, checkConsoleMessages } from '../framework/shared';
 
-const identifyChallengeMock = RequestMock()
+const identifyChallengeMockWithError = RequestMock()
   .onRequestTo('http://localhost:3000/idp/idx/introspect')
   .respond(xhrIdentify)
   .onRequestTo('http://localhost:3000/idp/idx/identify')
@@ -26,6 +26,16 @@ const identifyChallengeMock = RequestMock()
   .respond(xhrInvalidOTP)
   .onRequestTo('http://localhost:3000/idp/idx/cancel')
   .respond(xhrIdentify);
+
+const identifyChallengeMock = RequestMock()
+  .onRequestTo('http://localhost:3000/idp/idx/introspect')
+  .respond(xhrIdentify)
+  .onRequestTo('http://localhost:3000/idp/idx/identify')
+  .respond(xhrEmailVerification)
+  .onRequestTo('http://localhost:3000/idp/idx/challenge/poll')
+  .respond(xhrEmailVerification)
+  .onRequestTo('http://localhost:3000/idp/idx/cancel')
+  .respond(xhrIdentify);  
 
 const introspectRequestLogger = RequestLogger(
   /idx\/introspect/,
@@ -48,7 +58,7 @@ fixture('Session Storage - manage state in client side')
     ClientFunction(() => { window.sessionStorage.clear(); });
   });
 
-test.requestHooks(identifyChallengeMock)('shall save state handle during authenticator and clear after success', async t => {
+test.requestHooks(identifyChallengeMockWithError)('shall save state handle during authenticator and clear after success', async t => {
   const challengeSuccessMock = RequestMock()
     .onRequestTo('http://localhost:3000/idp/idx/introspect')
     .respond(xhrEmailVerification)
@@ -75,7 +85,7 @@ test.requestHooks(identifyChallengeMock)('shall save state handle during authent
   // doesn't save state handle and we reset mock during test,
   // test still pass. Meaning the mock server could response emailVerify
   // even a new state handle but unlikely from a actual server.
-  await t.removeRequestHooks(identifyChallengeMock);
+  await t.removeRequestHooks(identifyChallengeMockWithError);
   await t.addRequestHooks(challengeSuccessMock);
 
   // Refresh shall stay at same page
@@ -96,7 +106,7 @@ test.requestHooks(identifyChallengeMock)('shall save state handle during authent
   await t.expect(getStateHandleFromSessionStorage()).eql(null);
 });
 
-test.requestHooks(identifyChallengeMock)('shall save state handle during authenticator and do not clear at terminal', async t => {
+test.requestHooks(identifyChallengeMockWithError)('shall save state handle during authenticator and do not clear at terminal', async t => {
   const challengeTerminalMock = RequestMock()
     .onRequestTo('http://localhost:3000/idp/idx/introspect')
     .respond(xhrEmailVerification)
@@ -122,7 +132,7 @@ test.requestHooks(identifyChallengeMock)('shall save state handle during authent
   await challengeEmailPageObject.clickNextButton();
 
   // Reset mocks
-  await t.removeRequestHooks(identifyChallengeMock);
+  await t.removeRequestHooks(identifyChallengeMockWithError);
   await t.addRequestHooks(challengeTerminalMock);
 
   // Refresh shall stay at same page
@@ -144,7 +154,7 @@ test.requestHooks(identifyChallengeMock)('shall save state handle during authent
   await t.expect(getStateHandleFromSessionStorage()).eql(null);
 });
 
-test.requestHooks(identifyChallengeMock)('shall clear session.stateHandle when click sign-out', async t => {
+test.requestHooks(identifyChallengeMockWithError)('shall clear session.stateHandle when click sign-out', async t => {
   const identityPage = new IdentityPageObject(t);
   const challengeEmailPageObject = new ChallengeEmailPageObject(t);
 
@@ -165,7 +175,7 @@ test.requestHooks(identifyChallengeMock)('shall clear session.stateHandle when c
   await t.expect(getStateHandleFromSessionStorage()).eql(null);
 });
 
-test.requestHooks(identifyChallengeMock)('shall clear when session.stateHandle is invalid', async t => {
+test.requestHooks(identifyChallengeMockWithError)('shall clear when session.stateHandle is invalid', async t => {
   let useNewTokenResponse = false;
   const multipleIntrospectMock = RequestMock()
     .onRequestTo('http://localhost:3000/idp/idx/introspect')
@@ -197,7 +207,7 @@ test.requestHooks(identifyChallengeMock)('shall clear when session.stateHandle i
   await t.expect(getStateHandleFromSessionStorage()).eql(xhrEmailVerification.stateHandle);
 
   // Reset mocks
-  await t.removeRequestHooks(identifyChallengeMock);
+  await t.removeRequestHooks(identifyChallengeMockWithError);
   await t.addRequestHooks(multipleIntrospectMock);
   await t.addRequestHooks(introspectRequestLogger);
 
@@ -230,7 +240,7 @@ test.requestHooks(identifyChallengeMock)('shall clear when session.stateHandle i
 });
 
 
-test.requestHooks(introspectRequestLogger, identifyChallengeMock)('shall clear session.stateHandle when URL changes to handle changing apps', async t => {
+test.requestHooks(introspectRequestLogger, identifyChallengeMockWithError)('shall clear session.stateHandle when URL changes to handle changing apps', async t => {
   const identityPage = new IdentityPageObject(t);
   const challengeEmailPageObject = new ChallengeEmailPageObject(t);
 
