@@ -1,4 +1,4 @@
-import { View, createCallout, _ } from 'okta';
+import { View, createCallout } from 'okta';
 import hbs from 'handlebars-inline-precompile';
 import { SHOW_RESEND_TIMEOUT } from '../../utils/Constants';
 import sessionStorageHelper from '../../../client/sessionStorageHelper';
