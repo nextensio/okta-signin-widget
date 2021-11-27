@@ -1,9 +1,9 @@
-import { loc, View, createCallout } from 'okta';
+import { loc, createCallout } from 'okta';
 import { BaseForm, BaseView } from '../../internals';
 import BaseAuthenticatorView from '../../components/BaseAuthenticatorView';
-import { SHOW_RESEND_TIMEOUT } from '../../utils/Constants';
+import BaseResendView from '../shared/BaseResendView';
 
-const ResendView = View.extend(
+const ResendView = BaseResendView.extend(
   {
     // To be shown after a timeout
     className: 'phone-authenticator-challenge__resend-warning hide',
@@ -35,21 +35,6 @@ const ResendView = View.extend(
       }
       this.showCalloutAfterTimeout();
     },
-
-    postRender() {
-      this.showCalloutAfterTimeout();
-    },
-
-    showCalloutAfterTimeout() {
-      this.showCalloutTimer = setTimeout(() => {
-        this.el.classList.remove('hide');
-      }, SHOW_RESEND_TIMEOUT);
-    },
-
-    remove() {
-      View.prototype.remove.apply(this, arguments);
-      clearTimeout(this.showCalloutTimer);
-    }
   },
 );
 
@@ -71,13 +56,16 @@ const Body = BaseForm.extend(Object.assign(
         ? loc('oie.phone.verify.sms.codeSentText', 'login')
         : loc('mfa.calling', 'login');
       const enterCodeText = loc('oie.phone.verify.enterCodeText', 'login');
+      const carrierChargesText = loc('oie.phone.carrier.charges', 'login');
 
       const strongClass = this.model.get('phoneNumber') !== loc('oie.phone.alternate.title', 'login') ?
         'strong no-translate' : '';
       // Courage doesn't support HTML, hence creating a subtitle here.
       this.add(`<div class="okta-form-subtitle" data-se="o-form-explain">
         ${sendText}&nbsp;<span class='${strongClass}'>${this.model.escape('phoneNumber')}.</span>
-        &nbsp;${enterCodeText}</div>`, {
+        &nbsp;${enterCodeText}
+        <p>${carrierChargesText}</p>
+        </div>`, {
         prepend: true,
         selector: '.o-form-fieldset-container',
       });
@@ -86,7 +74,7 @@ const Body = BaseForm.extend(Object.assign(
     postRender() {
       BaseForm.prototype.postRender.apply(this, arguments);
       this.add(ResendView, {
-        selector: '.o-form-error-container',
+        selector: '.o-form-info-container',
         prepend: true,
       });
     },

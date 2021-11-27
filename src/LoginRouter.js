@@ -18,6 +18,8 @@ import BarcodePushController from 'BarcodePushController';
 import BarcodeTotpController from 'BarcodeTotpController';
 import ConsentRequiredController from 'ConsentRequiredController';
 import CustomPasswordExpiredController from 'CustomPasswordExpiredController';
+import DeviceActivateController from './DeviceActivateController';
+import DeviceActivateTerminalController from './DeviceActivateTerminalController';
 import EnrollActivateCustomFactorController from 'EnrollActivateCustomFactorController';
 import EnrollActivateEmailController from 'EnrollActivateEmailController';
 import EnrollCallAndSmsController from 'EnrollCallAndSmsController';
@@ -40,6 +42,7 @@ import EnrollmentLinkSentController from 'EnrollmentLinkSentController';
 import EnterPasscodePushFlowController from 'EnterPasscodePushFlowController';
 import ForgotPasswordController from 'ForgotPasswordController';
 import IDPDiscoveryController from 'IDPDiscoveryController';
+import ForceIDPDiscoveryController from 'ForceIDPDiscoveryController';
 import ManualSetupPushController from 'ManualSetupPushController';
 import ManualSetupTotpController from 'ManualSetupTotpController';
 import MfaVerifyController from 'MfaVerifyController';
@@ -135,6 +138,9 @@ export default BaseLoginRouter.extend({
     'signin/consent': 'consentRequired',
     'signin/admin-consent': 'adminConsentRequired',
     'signin/enroll-user': 'enrollUser',
+    'signin/device-activate-complete': 'deviceActivateComplete',
+    'signin/device-activate': 'deviceActivate',
+    'signin/idp-discovery-check': 'idpDiscoveryCheck',
     '*wildcard': 'defaultAuth',
   },
 
@@ -164,6 +170,10 @@ export default BaseLoginRouter.extend({
     } else {
       this.primaryAuth();
     }
+  },
+
+  idpDiscoveryCheck: function() {
+    this.render(ForceIDPDiscoveryController, { Beacon: SecurityBeacon });
   },
 
   idpDiscovery: function() {
@@ -550,5 +560,12 @@ export default BaseLoginRouter.extend({
 
   enrollUser: function() {
     this.render(EnrollUserController);
+  },
+
+  deviceActivate: function() {
+    this.render(DeviceActivateController);
+  },
+  deviceActivateComplete: function() {
+    this.render(DeviceActivateTerminalController);
   },
 });

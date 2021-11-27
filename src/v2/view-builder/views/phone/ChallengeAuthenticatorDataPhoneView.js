@@ -27,16 +27,21 @@ const Body = BaseForm.extend(
     },
 
     initialize() {
+      // This is needed when user clicks on secondary (say voice) and call fails with ratelimit server-side error.
+      // Then the user clicks primary button (say sms) and right methodType needs to be sent.
+      this.model.on('error', () => this.model.set('authenticator.methodType', this.model.get('primaryMode')));
       BaseForm.prototype.initialize.apply(this, arguments);
       const sendText = ( this.model.get('primaryMode') === 'sms' )
         ? loc('oie.phone.verify.sms.sendText', 'login')
         : loc('oie.phone.verify.call.sendText', 'login');
+      const carrierChargesText = loc('oie.phone.carrier.charges', 'login');
       const extraCssClasses =
         this.model.get('phoneNumber') !== loc('oie.phone.alternate.title', 'login') ?
-          'strong' : '';
+          'strong no-translate' : '';
       // Courage doesn't support HTML, hence creating a subtitle here.
       this.add(`<div class="okta-form-subtitle" data-se="o-form-explain">${sendText}
         <span ${ extraCssClasses ? 'class="' + extraCssClasses + '"' : ''}>${this.model.escape('phoneNumber')}</span>
+        <p>${carrierChargesText}</p>
       </div>`);
     },
 

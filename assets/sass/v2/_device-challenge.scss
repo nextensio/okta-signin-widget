@@ -47,6 +47,16 @@
     .highlight-text {
       font-weight: bold;
     }
+    .app-link-content {
+      margin-bottom: 15px;
+
+      .spinner {
+        margin-bottom: 30px;
+      }
+    }
+    .hide.button.link-button {
+      display: none;
+    }
   }
 }
 

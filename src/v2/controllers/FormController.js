@@ -9,14 +9,14 @@
  *
  * See the License for the specific language governing permissions and limitations under the License.
  */
-import { _, Controller } from 'okta';
+import { _, Controller, loc } from 'okta';
 import ViewFactory from '../view-builder/ViewFactory';
 import IonResponseHelper from '../ion/IonResponseHelper';
 import { getV1ClassName } from '../ion/ViewClassNamesFactory';
-import { FORMS, FORM_NAME_TO_OPERATION_MAP } from '../ion/RemediationConstants';
+import { FORMS, TERMINAL_FORMS, FORM_NAME_TO_OPERATION_MAP } from '../ion/RemediationConstants';
 import Util from '../../util/Util';
-import { clearTransactionMeta } from '../client/transactionMeta';
-
+import sessionStorageHelper from '../client/sessionStorageHelper';
+import { clearTransactionMeta } from '../client';
 
 export default Controller.extend({
   className: 'form-controller',
@@ -35,9 +35,12 @@ export default Controller.extend({
 
   postRender() {
     const currentViewState = this.options.appState.getCurrentViewState();
+    // TODO: add comments regarding when `currentViewState` would be null?
     if (!currentViewState) {
       return;
     }
+
+    this.clearMetadata();
 
     const TheView = ViewFactory.create(
       currentViewState.name,
@@ -57,6 +60,14 @@ export default Controller.extend({
     }
 
     this.triggerAfterRenderEvent();
+  },
+
+  clearMetadata() {
+    const formName = this.options.appState.get('currentFormName');
+    // TODO: OKTA-392835 shall not clear state handle at terminal page
+    if (TERMINAL_FORMS.includes(formName)) {
+      sessionStorageHelper.removeStateHandle();
+    }
   },
 
   triggerAfterRenderEvent() {
@@ -120,16 +131,19 @@ export default Controller.extend({
   },
 
   handleInvokeAction(actionPath = '') {
+    const idx = this.options.appState.get('idx');
+
     if (actionPath === 'cancel') {
       clearTransactionMeta(this.options.settings);
+      sessionStorageHelper.removeStateHandle();
+      this.options.appState.clearAppStateCache();
     }
 
-    const idx = this.options.appState.get('idx');
     if (idx['neededToProceed'].find(item => item.name === actionPath)) {
       idx.proceed(actionPath, {})
-        .then(this.handleIdxSuccess.bind(this))
+        .then(this.handleIdxResponse.bind(this))
         .catch(error => {
-          this.showFormErrors(this.formView.model, error);
+          this.showFormErrors(this.formView.model, error, this.formView.form);
         });
       return;
     }
@@ -139,13 +153,21 @@ export default Controller.extend({
     if (_.isFunction(actionFn)) {
       // TODO: OKTA-243167 what's the approach to show spinner indicating API in flight?
       actionFn()
-        .then(this.handleIdxSuccess.bind(this))
+        .then((resp) => {
+          if (actionPath === 'cancel' && this.options.settings.get('useInteractionCodeFlow')) {
+            // In this case we need to restart login flow and recreate transaction meta
+            // that will be used in interactionCodeFlow function
+            this.options.appState.trigger('restartLoginFlow');
+          } else {
+            this.handleIdxResponse(resp);
+          }
+        })
         .catch(error => {
-          this.showFormErrors(this.formView.model, error);
+          this.showFormErrors(this.formView.model, error, this.formView.form);
         });
     } else {
       this.options.settings.callGlobalError(`Invalid action selected: ${actionPath}`);
-      this.showFormErrors(this.formView.model, 'Invalid action selected.');
+      this.showFormErrors(this.formView.model, 'Invalid action selected.', this.formView.form);
     }
   },
 
@@ -158,6 +180,10 @@ export default Controller.extend({
 
     // Use full page redirection if necessary
     if (model.get('useRedirect')) {
+      // Clear when navigates away from SIW page, e.g. success, IdP Authenticator.
+      // Because SIW sort of finished its current /transaction/
+      sessionStorageHelper.removeStateHandle();
+
       const currentViewState = this.options.appState.getCurrentViewState();
       Util.redirectWithFormGet(currentViewState.href);
       return;
@@ -170,14 +196,14 @@ export default Controller.extend({
     const idx = this.options.appState.get('idx');
     if (!this.options.appState.hasRemediationObject(formName)) {
       this.options.settings.callGlobalError(`Cannot find http action for "${formName}".`);
-      this.showFormErrors(this.formView.model, 'Cannot find action to proceed.');
+      this.showFormErrors(this.formView.model, 'Cannot find action to proceed.', this.formView.form);
       return;
     }
 
     // Submit request to idx endpoint
     idx.proceed(formName, modelJSON)
       .then((resp) => {
-        const onSuccess = this.handleIdxSuccess.bind(this, resp);
+        const onSuccess = this.handleIdxResponse.bind(this, resp);
 
         if (formName === FORMS.ENROLL_PROFILE) {
           // call registration (aka enroll profile) hook
@@ -190,15 +216,15 @@ export default Controller.extend({
           onSuccess();
         }
       }).catch(error => {
-        if (error.proceed && error.rawIdxState) {
+        if (error.stepUp) {
           // Okta server responds 401 status code with WWW-Authenticate header and new remediation
           // so that the iOS/MacOS credential SSO extension (Okta Verify) can intercept
           // the response reaches here when Okta Verify is not installed
           // we need to return an idx object so that
           // the SIW can proceed to the next step without showing error
-          this.handleIdxSuccess(error);
+          this.handleIdxResponse(error);
         } else {
-          this.showFormErrors(model, error);
+          this.showFormErrors(model, error, this.formView.form);
         }
       })
       .finally(() => {
@@ -221,26 +247,56 @@ export default Controller.extend({
     return modelJSON;
   },
 
-  showFormErrors(model, error) {
+  /**
+   * @param model current form model
+   * @param error any errors after user action
+   * @param form current form
+   * Handle errors that get displayed right after any user action. After such form errors widget doesn't
+   * reload or re-render, but updates the AppSate with latest remediation.
+   */
+  showFormErrors(model, error, form) {
+    /* eslint max-statements: [2, 22] */
+    let errorObj;
+    let idxStateError;
+    let showErrorBanner = true;
     model.trigger('clearFormError');
+    
     if (!error) {
       error = 'FormController - unknown error found';
       this.options.settings.callGlobalError(error);
     }
 
+    if(error?.rawIdxState) {
+      idxStateError = error;
+      error = error.rawIdxState;
+    }
+
     if (IonResponseHelper.isIonErrorResponse(error)) {
-      const convertedErrors = IonResponseHelper.convertFormErrors(error);
-      const showBanner = convertedErrors.responseJSON.errorCauses.length ? false : true;
-      model.trigger('error', model, convertedErrors, showBanner);
+      errorObj = IonResponseHelper.convertFormErrors(error);
     } else if (error.errorSummary) {
-      model.trigger('error', model, { responseJSON: error }, true);
+      errorObj = { responseJSON: error };
     } else {
-      model.trigger('error', model, { responseJSON: { errorSummary: String(error) } }, true);
+      Util.logConsoleError(error);
+      errorObj = { responseJSON: { errorSummary: loc('error.unsupported.response', 'login')}};
+    }
+
+    if(_.isFunction(form?.showCustomFormErrorCallout)) {
+      showErrorBanner = !form.showCustomFormErrorCallout(errorObj);
+    }
+
+    // show error before updating app state.
+    model.trigger('error', model, errorObj, showErrorBanner);
+    idxStateError = Object.assign({}, idxStateError, {hasFormError: true});
+
+    // TODO OKTA-408410: Widget should update the state on every new response. It should NOT do selective update.
+    // For eg 429 rate-limit errors, we have to skip updating idx state, because error response is not an idx response.
+    if (Array.isArray(idxStateError?.neededToProceed) && idxStateError?.neededToProceed.length) {
+      this.handleIdxResponse(idxStateError);
     }
   },
 
-  handleIdxSuccess: function(idxResp) {
-    this.options.appState.trigger('remediationSuccess', idxResp);
+  handleIdxResponse: function(idxResp) {
+    this.options.appState.trigger('updateAppState', idxResp);
   },
 
   /**
@@ -255,5 +311,4 @@ export default Controller.extend({
     const button = this.$el.find('.o-form-button-bar .button');
     button.toggleClass('link-button-disabled', disabled);
   },
-
 });

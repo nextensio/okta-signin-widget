@@ -1,10 +1,10 @@
-import { loc, createCallout } from 'okta';
+import { loc } from 'okta';
 import { BaseForm } from '../../internals';
 import BrowserFeatures from '../../../../util/BrowserFeatures';
 import BaseAuthenticatorView from '../../components/BaseAuthenticatorView';
 import polling from '../shared/polling';
 import { FORMS as RemediationForms } from '../../../ion/RemediationConstants';
-import ResendView from './ResendView';
+import OVResendView from './OVResendView';
 import SwitchEnrollChannelLinkView from './SwitchEnrollChannelLinkView';
 import EnrollChannelPollDescriptionView from './EnrollChannelPollDescriptionView';
 
@@ -35,41 +35,27 @@ const Body = BaseForm.extend(Object.assign(
     noButtonBar: true,
     initialize() {
       BaseForm.prototype.initialize.apply(this, arguments);
+      this.listenTo(this.model, 'error', this.stopPolling);
+      this.startPolling();
+    },
+    postRender() {
       if ((BrowserFeatures.isAndroid() || BrowserFeatures.isIOS()) &
         this.options.appState.get('currentAuthenticator').contextualData.selectedChannel === 'qrcode') {
         this.options.appState.trigger('switchForm', RemediationForms.SELECT_ENROLLMENT_CHANNEL);
       }
-      this.listenTo(this.model, 'error', this.stopPolling);
-      this.startPolling();
     },
     showMessages() {
-      // override showMessages to display error message
-      const messagesObjs = this.options.appState.get('messages');
-      if (messagesObjs && Array.isArray(messagesObjs.value)) {
-        this.add('<div class="ion-messages-container"></div>', '.o-form-error-container');
-
-        messagesObjs.value.forEach(messagesObj => {
-          const msg = messagesObj.message;
-          if (messagesObj?.class === 'ERROR') {
-            const options = {
-              content: msg,
-              type: 'error',
-            };
-            if (this.options.appState.containsMessageWithI18nKey(OV_FORCE_FIPS_COMPLIANCE_UPGRAGE_KEY_IOS) ||
-            this.options.appState.containsMessageWithI18nKey(OV_FORCE_FIPS_COMPLIANCE_UPGRAGE_KEY_NON_IOS)) {
-              // add a title for ov force upgrade
-              options.title = loc('oie.okta_verify.enroll.force.upgrade.title', 'login');
-            } else if (this.options.appState.containsMessageWithI18nKey(OV_QR_ENROLL_ENABLE_BIOMETRICS_KEY)) {
-              // add a title for OV enable biometrics message during enrollment
-              options.title = loc('oie.authenticator.app.method.push.enroll.enable.biometrics.title', 'login');
-            }
-            this.add(createCallout(options), '.o-form-error-container');
-          } else {
-            this.add(`<p>${msg}</p>`, '.ion-messages-container');
-          }
-        });
-
+      // override showMessages to display custom callout
+      const calloutOptions = {};
+      if (this.options.appState.containsMessageWithI18nKey(OV_FORCE_FIPS_COMPLIANCE_UPGRAGE_KEY_IOS) ||
+        this.options.appState.containsMessageWithI18nKey(OV_FORCE_FIPS_COMPLIANCE_UPGRAGE_KEY_NON_IOS)) {
+        // add a title for ov force upgrade
+        calloutOptions.title = loc('oie.okta_verify.enroll.force.upgrade.title', 'login');
+      } else if (this.options.appState.containsMessageWithI18nKey(OV_QR_ENROLL_ENABLE_BIOMETRICS_KEY)) {
+        // add a title for OV enable biometrics message during enrollment
+        calloutOptions.title = loc('oie.authenticator.app.method.push.enroll.enable.biometrics.title', 'login');
       }
+      BaseForm.prototype.showMessages.call(this, calloutOptions);
     },
     getUISchema() {
       const schema = [];
@@ -87,7 +73,7 @@ const Body = BaseForm.extend(Object.assign(
       });
       if (['email', 'sms'].includes(selectedChannel)) {
         schema.push({
-          View: ResendView,
+          View: OVResendView,
           selector: '.o-form-error-container',
         });
       }

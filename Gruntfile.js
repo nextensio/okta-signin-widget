@@ -10,8 +10,9 @@ module.exports = function(grunt) {
 
   var Handlebars  = require('handlebars'),
       postcssAutoprefixer = require('autoprefixer')({remove: false}),
-      cssnano     = require('cssnano')({safe: true}),
-      nodesass = require('node-sass'),
+      cssnano     = require('cssnano')({safe: true}),      
+      sass        = require('sass'),
+      Fiber       = require('fibers'),
       path        = require('path');
 
   var JS                    = 'target/js',
@@ -89,7 +90,7 @@ module.exports = function(grunt) {
           {
             expand: true,
             cwd: JS,
-            src: ['okta-sign-in*', '!*.html'],
+            src: ['okta-sign-in*', '!*.html', '!*.txt'],
             dest: DIST + '/js'
           },
           {
@@ -217,18 +218,20 @@ module.exports = function(grunt) {
     exec: {
       'clean': 'yarn clean',
       'retirejs': 'yarn retirejs',
-      'build-dev': 'yarn build:webpack-dev' + (mockDuo ? ' --env.mockDuo' : ''),
-      'build-dev-watch': 'yarn build:webpack-dev --watch --env.skipAnalyzer' + (mockDuo ? ' --env.mockDuo' : ''),
+      'build-dev': 'yarn build:webpack-dev' + (mockDuo ? ' --env mockDuo=true' : ''),
+      'build-dev-watch':
+        'yarn build:webpack-dev --watch --env skipAnalyzer=true' + (mockDuo ? ' --env mockDuo=true' : ''),
       'build-release': 'yarn build:webpack-release',
       'build-e2e-app': 'yarn build:webpack-e2e-app',
       'generate-config': 'yarn generate-config',
       'run-protractor': 'yarn protractor',
-      'pseudo-loc': 'node buildtools pseudo-loc',
+      'pseudo-loc': 'node scripts/buildtools pseudo-loc',
     },
 
     sass: {
       options: {
-        implementation: nodesass,
+        implementation: sass,
+        fiber: Fiber,
         sourceMap: true,
         outputStyle: 'expanded',
         includePaths: [SASS]

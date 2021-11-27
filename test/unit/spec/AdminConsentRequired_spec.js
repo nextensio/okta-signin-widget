@@ -1,5 +1,5 @@
 import { _ } from 'okta';
-import createAuthClient from 'widget/createAuthClient';
+import getAuthClient from 'widget/getAuthClient';
 import LoginRouter from 'LoginRouter';
 import AdminConsentRequiredForm from 'helpers/dom/AdminConsentRequiredForm';
 import Util from 'helpers/mocks/Util';
@@ -21,9 +21,11 @@ function setup(settings, res = resAdminConsentRequired) {
   const successSpy = jasmine.createSpy('successSpy');
   const setNextResponse = Util.mockAjax();
   const baseUrl = window.location.origin;
-  const authClient = createAuthClient({
-    issuer: baseUrl,
-    transformErrorXHR: LoginUtil.transformErrorXHR,
+  const authClient = getAuthClient({
+    authParams: {
+      issuer: baseUrl,
+      transformErrorXHR: LoginUtil.transformErrorXHR,
+    }
   });
   const router = new LoginRouter(
     _.extend(
@@ -131,7 +133,7 @@ Expect.describe('AdminConsentRequired', function() {
 
   itp('has the default logo if client logo is not provided', function() {
     return setup().then(function(test) {
-      expect(test.form.clientLogoLink()).toHaveLength(0);
+      expect(test.form.clientLogoLink().length).toEqual(0);
       expect(test.form.clientLogo().attr('src')).toBe(`${window.location.origin}/img/logos/default.png`);
     });
   });
@@ -155,7 +157,7 @@ Expect.describe('AdminConsentRequired', function() {
 
   itp('has the consent button', function() {
     return setup().then(function(test) {
-      expect(test.form.consentButton()).toHaveLength(1);
+      expect(test.form.consentButton().length).toEqual(1);
       expect(test.form.consentButton().attr('value')).toBe('Allow Access');
       expect(test.form.consentButton().attr('class')).toBe('button button-primary');
     });
@@ -193,7 +195,7 @@ Expect.describe('AdminConsentRequired', function() {
 
   itp('has the cancel button', function() {
     return setup().then(function(test) {
-      expect(test.form.cancelButton()).toHaveLength(1);
+      expect(test.form.cancelButton().length).toEqual(1);
       expect(test.form.cancelButton().attr('value')).toBe('Don\'t Allow');
       expect(test.form.cancelButton().attr('class')).toBe('button button-clear');
     });

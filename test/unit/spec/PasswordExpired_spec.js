@@ -1,6 +1,6 @@
 /* eslint max-params: [2, 19] */
 import { _, internal } from 'okta';
-import createAuthClient from 'widget/createAuthClient';
+import getAuthClient from 'widget/getAuthClient';
 import Router from 'LoginRouter';
 import Beacon from 'helpers/dom/Beacon';
 import PasswordExpiredForm from 'helpers/dom/PasswordExpiredForm';
@@ -15,6 +15,9 @@ import resErrorNoCause from 'helpers/xhr/PASSWORD_EXPIRED_error_noCause';
 import resErrorOldPass from 'helpers/xhr/PASSWORD_EXPIRED_error_oldpass';
 import resPassWarn from 'helpers/xhr/PASSWORD_WARN';
 import resSuccess from 'helpers/xhr/SUCCESS';
+import resSessionActive from 'helpers/xhr/SESSION_ACTIVE';
+import resSessionNotFound from 'helpers/xhr/SESSION_NOT_FOUND';
+import resSessionDeleted from 'helpers/xhr/SESSION_DELETED';
 import $sandbox from 'sandbox';
 import LoginUtil from 'util/Util';
 const SharedUtil = internal.util.Util;
@@ -30,7 +33,9 @@ function setup(settings, res, custom) {
   const afterErrorHandler = jasmine.createSpy('afterErrorHandler');
   const setNextResponse = Util.mockAjax();
   const baseUrl = 'https://foo.com';
-  const authClient = createAuthClient({ issuer: baseUrl, transformErrorXHR: LoginUtil.transformErrorXHR });
+  const authClient = getAuthClient({
+    authParams: { issuer: baseUrl, transformErrorXHR: LoginUtil.transformErrorXHR }
+  });
   const router = new Router(
     _.extend(
       {
@@ -250,6 +255,7 @@ Expect.describe('PasswordExpiration', function() {
     itp('has a sign out link', function() {
       return setup().then(function(test) {
         Expect.isVisible(test.form.signoutLink());
+        expect(test.form.signoutLink().text()).toBe('Sign Out');
       });
     });
     itp('does not have a skip link', function() {
@@ -257,13 +263,17 @@ Expect.describe('PasswordExpiration', function() {
         expect(test.form.skipLink().length).toBe(0);
       });
     });
-    itp('has a signout link which cancels the current stateToken and navigates to primaryAuth', function() {
+    itp('has a signout link which cancels the current stateToken, deletes session and navigates to primaryAuth', function() {
       return setup()
         .then(function(test) {
           spyOn(test.router.controller.options.appState, 'clearLastAuthResponse').and.callThrough();
           spyOn(SharedUtil, 'redirect');
           Util.resetAjaxRequests();
-          test.setNextResponse(resCancel);
+          test.setNextResponse([
+            resCancel,
+            resSessionActive,
+            resSessionDeleted
+          ]);
           test.form.signout();
           return Expect.waitForAjaxRequest(test);
         })
@@ -273,26 +283,69 @@ Expect.describe('PasswordExpiration', function() {
           return Expect.waitForSpyCall(test.router.controller.options.appState.clearLastAuthResponse, test);
         })
         .then(function(test) {
-          expect(Util.numAjaxRequests()).toBe(1);
+          expect(Util.numAjaxRequests()).toBe(3);
           Expect.isJsonPost(Util.getAjaxRequest(0), {
             url: 'https://foo.com/api/v1/authn/cancel',
             data: {
               stateToken: 'testStateToken',
             },
           });
+          Expect.isJsonGet(Util.getAjaxRequest(1), {
+            url: 'https://foo.com/api/v1/sessions/me',
+          });
+          Expect.isJsonDelete(Util.getAjaxRequest(2), {
+            url: 'https://foo.com/api/v1/sessions/me',
+          });
+          expect(test.router.controller.options.appState.clearLastAuthResponse).toHaveBeenCalled();
+          Expect.isPrimaryAuth(test.router.controller);
+        });
+    });
+    itp('has a signout link which cancels the current stateToken, does not delete non-existent session and navigates to primaryAuth', function() {
+      return setup()
+        .then(function(test) {
+          spyOn(test.router.controller.options.appState, 'clearLastAuthResponse').and.callThrough();
+          spyOn(SharedUtil, 'redirect');
+          Util.resetAjaxRequests();
+          test.setNextResponse([
+            resCancel,
+            resSessionNotFound
+          ]);
+          test.form.signout();
+          return Expect.waitForAjaxRequest(test);
+        })
+        .then(test => {
+          // `clearLastAuthResponse` will be invoked when response has no `status`
+          // see RouterUtil for details
+          return Expect.waitForSpyCall(test.router.controller.options.appState.clearLastAuthResponse, test);
+        })
+        .then(function(test) {
+          expect(Util.numAjaxRequests()).toBe(2);
+          Expect.isJsonPost(Util.getAjaxRequest(0), {
+            url: 'https://foo.com/api/v1/authn/cancel',
+            data: {
+              stateToken: 'testStateToken',
+            },
+          });
+          Expect.isJsonGet(Util.getAjaxRequest(1), {
+            url: 'https://foo.com/api/v1/sessions/me',
+          });
           expect(test.router.controller.options.appState.clearLastAuthResponse).toHaveBeenCalled();
           Expect.isPrimaryAuth(test.router.controller);
         });
     });
     itp(
-      'has a signout link which cancels the current stateToken and redirects to the provided signout url',
+      'has a signout link which cancels the current stateToken, deletes session and redirects to the provided signout url',
       function() {
         return setup({ signOutLink: 'http://www.goodbye.com' })
           .then(function(test) {
             spyOn(test.router.controller.options.appState, 'clearLastAuthResponse').and.callThrough();
             spyOn(SharedUtil, 'redirect');
             Util.resetAjaxRequests();
-            test.setNextResponse(resCancel);
+            test.setNextResponse([
+              resCancel,
+              resSessionActive,
+              resSessionDeleted
+            ]);
             test.form.signout();
             return Expect.waitForAjaxRequest(test);
           })
@@ -302,12 +355,18 @@ Expect.describe('PasswordExpiration', function() {
             return Expect.waitForSpyCall(test.router.controller.options.appState.clearLastAuthResponse, test);
           })
           .then(function(test) {
-            expect(Util.numAjaxRequests()).toBe(1);
+            expect(Util.numAjaxRequests()).toBe(3);
             Expect.isJsonPost(Util.getAjaxRequest(0), {
               url: 'https://foo.com/api/v1/authn/cancel',
               data: {
                 stateToken: 'testStateToken',
               },
+            });
+            Expect.isJsonGet(Util.getAjaxRequest(1), {
+              url: 'https://foo.com/api/v1/sessions/me',
+            });
+            Expect.isJsonDelete(Util.getAjaxRequest(2), {
+              url: 'https://foo.com/api/v1/sessions/me',
             });
             expect(test.router.controller.options.appState.clearLastAuthResponse).toHaveBeenCalled();
             expect(SharedUtil.redirect).toHaveBeenCalledWith('http://www.goodbye.com');
@@ -458,6 +517,7 @@ Expect.describe('PasswordExpiration', function() {
               statusCode: 400,
               xhr: {
                 status: 400,
+                headers: { 'content-type': 'application/json' },
                 responseType: 'json',
                 responseText: '{"errorCode":"E0000014","errorSummary":"Update of credentials failed","errorLink":"E0000014","errorId":"oaecIzifuYzTV-5h3Ea46oxiw","errorCauses":[{"errorSummary":"Old password is not correct"}]}',
                 responseJSON: {
@@ -501,6 +561,7 @@ Expect.describe('PasswordExpiration', function() {
               statusCode: 403,
               xhr: {
                 status: 403,
+                headers: { 'content-type': 'application/json' },
                 responseType: 'json',
                 responseText: '{"errorCode":"E0000014","errorSummary":"Update of credentials failed","errorLink":"E0000014","errorId":"oaeRXeoXe24RWqjj0R-pL03ZA","errorCauses":[{"errorSummary":"Password requirements were not met. Password requirements: at least 8 characters, a lowercase letter, an uppercase letter, a number, a symbol, no parts of your username, does not include your first name, does not include your last name."}]}',
                 responseJSON: {
@@ -542,6 +603,7 @@ Expect.describe('PasswordExpiration', function() {
                 statusCode: 403,
                 xhr: {
                   status: 403,
+                  headers: { 'content-type': 'application/json' },
                   responseType: 'json',
                   responseText: '{"errorCode":"E0000014","errorSummary":"Update of credentials failed","errorLink":"E0000014","errorId":"oaeRXeoXe24RWqjj0R-pL03ZA","errorCauses":[{"errorSummary":"Password requirements were not met. Password requirements: at least 8 characters, a lowercase letter, an uppercase letter, a number, a symbol, no parts of your username, does not include your first name, does not include your last name."}]}',
                   responseJSON: {
@@ -584,6 +646,7 @@ Expect.describe('PasswordExpiration', function() {
                 statusCode: 403,
                 xhr: {
                   status: 403,
+                  headers: { 'content-type': 'application/json' },
                   responseType: 'json',
                   responseText: '{"errorCode":"E0000014","errorSummary":"Update of credentials failed","errorLink":"E0000014","errorId":"oaeRXeoXe24RWqjj0R-pL03ZA"}',
                   responseJSON: {
@@ -657,6 +720,7 @@ Expect.describe('PasswordExpiration', function() {
     itp('has a sign out link', function() {
       return setupCustomExpiredPassword().then(function(test) {
         Expect.isVisible(test.form.signoutLink());
+        expect(test.form.signoutLink().text()).toBe('Sign Out');
       });
     });
     itp('does not have a skip link', function() {
@@ -709,6 +773,7 @@ Expect.describe('PasswordExpiration', function() {
     itp('has a sign out link', function() {
       return setupWarn(4).then(function(test) {
         Expect.isVisible(test.form.signoutLink());
+        expect(test.form.signoutLink().text()).toBe('Sign Out');
       });
     });
     itp('has a skip link', function() {
@@ -735,17 +800,27 @@ Expect.describe('PasswordExpiration', function() {
         .then(function(test) {
           spyOn(test.router.controller.options.appState, 'clearLastAuthResponse').and.callThrough();
           Util.resetAjaxRequests();
-          test.setNextResponse(resCancel);
+          test.setNextResponse([
+            resCancel,
+            resSessionActive,
+            resSessionDeleted
+          ]);
           test.form.signout();
           return Expect.waitForPrimaryAuth(test);
         })
         .then(function(test) {
-          expect(Util.numAjaxRequests()).toBe(1);
+          expect(Util.numAjaxRequests()).toBe(3);
           Expect.isJsonPost(Util.getAjaxRequest(0), {
             url: 'https://foo.com/api/v1/authn/cancel',
             data: {
               stateToken: 'testStateToken',
             },
+          });
+          Expect.isJsonGet(Util.getAjaxRequest(1), {
+            url: 'https://foo.com/api/v1/sessions/me',
+          });
+          Expect.isJsonDelete(Util.getAjaxRequest(2), {
+            url: 'https://foo.com/api/v1/sessions/me',
           });
           expect(test.router.controller.options.appState.clearLastAuthResponse).toHaveBeenCalled();
           Expect.isPrimaryAuth(test.router.controller);
@@ -810,6 +885,7 @@ Expect.describe('PasswordExpiration', function() {
     itp('has a sign out link', function() {
       return setupCustomExpiredPasswordWarn(4).then(function(test) {
         Expect.isVisible(test.form.signoutLink());
+        expect(test.form.signoutLink().text()).toBe('Sign Out');
       });
     });
     itp('has a skip link', function() {

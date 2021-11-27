@@ -4,7 +4,8 @@
 // - ???
 module.exports = [
   'AdminConsentRequired_spec.js',
-  'DeviceFingerprint_spec.js',
+  'DeviceCodeActivate_spec.js',
+  'DeviceCodeActivateTerminal_spec.js',
   'EnrollActivateClaimsFactor_spec.js',
   'EnrollCall_spec.js',
   'EnrollChoices_spec.js',
@@ -35,9 +36,6 @@ module.exports = [
   'RecoveryChallenge_spec.js',
   'RecoveryQuestion_spec.js',
   'RefreshAuthState_spec.js',
-  'RegistrationSchema_spec.js',
-  'Spinner_spec.js',
-  'Util_spec.js',
   'UnlockAccount_spec.js',
   'VerifyPIV_spec.js',
   'VerifyWebauthn_spec.js'

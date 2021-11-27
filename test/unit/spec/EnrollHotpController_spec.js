@@ -1,5 +1,5 @@
 /* eslint max-params: [2, 16] */
-import createAuthClient from 'widget/createAuthClient';
+import getAuthClient from 'widget/getAuthClient';
 import Router from 'LoginRouter';
 import Beacon from 'helpers/dom/Beacon';
 import Form from 'helpers/dom/EnrollHotpForm';
@@ -14,7 +14,9 @@ Expect.describe('EnrollHotp', function() {
   function setup() {
     const setNextResponse = Util.mockAjax();
     const baseUrl = 'https://foo.com';
-    const authClient = createAuthClient({ issuer: baseUrl });
+    const authClient = getAuthClient({
+      authParams: { issuer: baseUrl }
+    });
     const successSpy = jasmine.createSpy('success');
     const afterErrorHandler = jasmine.createSpy('afterErrorHandler');
     const router = new Router({
@@ -60,14 +62,14 @@ Expect.describe('EnrollHotp', function() {
   Expect.describe('Enroll factor', function() {
     itp('is restricted', function() {
       return setup().then(function(test) {
-        expect(test.form.errorHtml()).toHaveLength(1);
+        expect(test.form.errorHtml().length).toEqual(1);
         expect(test.form.errorHtml().html()).toEqual('Contact your administrator to continue enrollment.');
       });
     });
 
     itp('has right profile name', function() {
       return setup().then(function(test) {
-        expect(test.form.title()).toHaveLength(1);
+        expect(test.form.title().length).toEqual(1);
         expect(test.form.title().html()).toEqual('Setup Entrust');
       });
     });

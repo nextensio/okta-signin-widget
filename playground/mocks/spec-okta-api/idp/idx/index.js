@@ -3,7 +3,7 @@ const cancelTransaction = require('../../../data/idp/idx/identify-with-no-sso-ex
 
 const idx = [
   '/idp/idx',
-  '/idp/idx/activate',
+  '/idp/idx/device/activate',
   '/idp/idx/authenticators/okta-verify/launch',
   '/idp/idx/authenticators/poll',
   '/idp/idx/authenticators/poll/cancel',
@@ -25,7 +25,8 @@ const idx = [
   '/idp/idx/recover',
   '/idp/idx/skip',
   '/idp/idx/poll',
-  '/idp/idx/unlock-account'
+  '/idp/idx/unlock-account',
+  '/idp/idx/request-activation',
 ].map(path => {
   return templateHelper({path});
 });
@@ -34,6 +35,7 @@ const ssoExtension = [
   templateHelper({
     path: '/idp/idx/authenticators/sso_extension/transactions/:transactionId/verify',
     method: 'GET',
+    /* eslint-disable-next-line @okta/okta/no-unlocalized-text-in-templates */
     template: '<html>Verifying the device...the login flow will be resumed afterwards</html>'
   }),
   templateHelper({

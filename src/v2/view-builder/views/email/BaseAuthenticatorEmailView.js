@@ -1,11 +1,11 @@
-import { loc, View, createCallout, _ } from 'okta';
+import { loc, createCallout } from 'okta';
 import { BaseForm } from '../../internals';
 import email from '../shared/email';
 import BaseAuthenticatorView from '../../components/BaseAuthenticatorView';
-import { SHOW_RESEND_TIMEOUT } from '../../utils/Constants';
+import BaseResendView from '../shared/BaseResendView';
 import BaseFormWithPolling from '../../internals/BaseFormWithPolling';
 
-const ResendView = View.extend(
+const ResendView = BaseResendView.extend(
   {
     className: 'hide resend-email-view',
     events: {
@@ -26,23 +26,8 @@ const ResendView = View.extend(
       if (!this.$el.hasClass('hide')) {
         this.$el.addClass('hide');
       }
-      this.showCalloutWithDelay();
+      this.showCalloutAfterTimeout();
     },
-
-    postRender() {
-      this.showCalloutWithDelay();
-    },
-
-    showCalloutWithDelay() {
-      this.showMeTimeout = _.delay(() => {
-        this.$el.removeClass('hide');
-      }, SHOW_RESEND_TIMEOUT);
-    },
-
-    remove() {
-      View.prototype.remove.apply(this, arguments);
-      clearTimeout(this.showMeTimeout);
-    }
   },
 );
 
@@ -75,15 +60,34 @@ const Body = BaseFormWithPolling.extend(Object.assign(
 
     triggerAfterError(model, error) {
       BaseForm.prototype.triggerAfterError.apply(this, arguments);
+      const isFormPolling = !!this.polling;
       this.stopPolling();
 
-      // Polling needs to be resumed if it's a form error and session is still valid
-      if(!error.responseJSON?.errorSummaryKeys?.includes('idx.session.expired')) {
-        this.startPolling();
+      if (error.responseJSON?.errorSummaryKeys?.includes('idx.session.expired')) {
+        // Do NOT resume polling since session is invalid and polling is already stopped
+        return;
       }
-    }
-  },
 
+      if (this.isRateLimitError(error)) {
+        // When polling encounter rate limit error, wait 60 sec for rate limit bucket to reset
+        // before polling again & hide error message
+        if (isFormPolling) {
+          setTimeout(() => {
+            model.trigger('clearFormError');
+          }, 0);
+        }
+        this.startPolling(60000);
+      } else {
+        this.startPolling(this.options.appState.get('dynamicRefreshInterval'));
+      }
+    },
+
+    isRateLimitError(error) {
+      return (error.responseJSON?.errorSummaryKeys?.includes('tooManyRequests') ||
+        error.responseJSON?.errorCode === 'E0000047') &&
+        !error.responseJSON?.errorIntent;
+    },
+  },
   email,
 ));
 

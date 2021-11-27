@@ -3,6 +3,7 @@ const responseConfig = require('./responseConfig');
 const supportedApi = [
   '/oauth2/',
   '/api/v1/authn',
+  '/api/v1/registration',
   '/idp/idx'
 ];
 
@@ -40,7 +41,7 @@ const configMock = (option) => {
   return Object.assign({
     // delay: [2000, 3000],
     proxy: false,
-    method: 'POST',
+    method: option.method || 'POST',
     status: (req, res, next) => {
       if(!hasChainedMockData) {
         res.status(403);

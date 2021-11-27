@@ -86,7 +86,10 @@ function antiPhishingMessage(image, host) {
     },
   });
 
-  image.qtip('toggle', image.is(':visible'));
+  // It is necessary to delay toggle to the next render cycle, since qtip internally defers some setup tasks.
+  setTimeout(() => {
+    image.qtip('toggle', image.is(':visible'));
+  }, 0);
 }
 
 function destroyAntiPhishingMessage(image) {
@@ -115,7 +118,7 @@ async function updateSecurityImage($el, appState, animate) {
 
   // Animate loading the security beacon
   if (!hasBorder) {
-    // This occurrs when appState username is blank
+    // This occurs when appState username is blank
     // we do not yet know if the user is recognized
     image.fadeOut(duration, function() {
       setBackgroundImage(image, appState);
@@ -124,7 +127,7 @@ async function updateSecurityImage($el, appState, animate) {
     });
   } else {
     // Animate loading the security beacon with a loading bar for the border
-    // This occurrs when the username has been checked against Okta.
+    // This occurs when the username has been checked against Okta.
     border.removeClass('auth-beacon-border');
     await Animations.radialProgressBar({
       $el: radialProgressBar,

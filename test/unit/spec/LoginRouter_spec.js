@@ -1,7 +1,9 @@
-/* eslint max-params: [2, 34], max-statements: 0, max-len: [2, 180], camelcase:0 */
+/* eslint max-params: [2, 34], max-statements: 0, max-len: [2, 210], camelcase:0 */
 import { _, $, Backbone, Router, internal } from 'okta';
-import createAuthClient from 'widget/createAuthClient';
+import getAuthClient from 'widget/getAuthClient';
 import LoginRouter from 'LoginRouter';
+import PrimaryAuthController from 'PrimaryAuthController';
+import SecurityBeacon from 'views/shared/SecurityBeacon';
 import config from 'config/config.json';
 import EnrollCallForm from 'helpers/dom/EnrollCallForm';
 import IDPDiscoveryForm from 'helpers/dom/IDPDiscoveryForm';
@@ -22,6 +24,7 @@ import resRecovery from 'helpers/xhr/RECOVERY';
 import resSuccess from 'helpers/xhr/SUCCESS';
 import resSuccessNext from 'helpers/xhr/SUCCESS_next';
 import resSuccessOriginal from 'helpers/xhr/SUCCESS_original';
+import resSuccessWithSTAF from 'helpers/xhr/SUCCESS_with_STAF';
 import resSuccessStepUp from 'helpers/xhr/SUCCESS_session_step_up';
 import resUnauthenticated from 'helpers/xhr/UNAUTHENTICATED';
 import labelsCountryJa from 'helpers/xhr/labels_country_ja';
@@ -72,7 +75,7 @@ Expect.describe('LoginRouter', function() {
         authParams[parts[1]] = settings[key];
       }
     });
-    const authClient = createAuthClient(authParams);
+    const authClient = settings.authClient || getAuthClient({ authParams });
     const eventSpy = jasmine.createSpy('eventSpy');
     const afterRenderHandler = jasmine.createSpy('afterRenderHandler');
     const afterErrorHandler = jasmine.createSpy('afterErrorHandler');
@@ -160,6 +163,10 @@ Expect.describe('LoginRouter', function() {
       });
   }
 
+  function expectUnsuportedLanguageLoad(test, delay = 0) {
+    test.setNextResponse([_.extend({ delay }, labelsLoginJa), _.extend({ delay }, labelsCountryJa)]);
+  }
+
   // { settings, userLanguages, supportedLanguages }
   function setupLanguage(options) {
     const loadingSpy = jasmine.createSpy('loading');
@@ -179,6 +186,13 @@ Expect.describe('LoginRouter', function() {
           switch (options.mockLanguageRequest) {
           case 'ja':
             test.setNextResponse([_.extend({ delay }, labelsLoginJa), _.extend({ delay }, labelsCountryJa)]);
+            break;
+          // Unsupported languages
+          case 'zz-zz':
+          case 'zz-ZZ':
+          case 'nl':
+          case 'NL':
+            expectUnsuportedLanguageLoad(test, delay);
             break;
           }
         }
@@ -318,15 +332,6 @@ Expect.describe('LoginRouter', function() {
 
     expect(err.name).toBe('CONFIG_ERROR');
     expect(err.message).toEqual('"el" is a required widget parameter');
-  });
-  it('throws a ConfigError if issuer is not passed as a widget param', function() {
-    const fn = function() {
-      setup({ authClient: createAuthClient({ issuer: undefined }) });
-    };
-
-    expect(fn).toThrowError(
-      'No issuer passed to constructor. Required usage: new OktaAuth({issuer: "https://{yourOktaDomain}.com/oauth2/{authServerId}"})'
-    );
   });
   itp(
     'renders the primary autenthentication form when no globalSuccessFn and globalErrorFn are passed as widget params',
@@ -617,6 +622,50 @@ Expect.describe('LoginRouter', function() {
         });
     }
   );
+  itp(
+    'for success with session token and next link, success callback data contains a next function and session object that implements setCookieAndRedirect function (when STATE_TOKEN_ALL_FLOWS is enabled)',
+    function() {
+      const spied = {};
+      spied.successFn = function(resp) {
+        if (resp.status === 'SUCCESS') {
+          if (resp.session) {
+            resp.session.setCookieAndRedirect('http://baz.com/foo');
+          }
+          if (resp.next) {
+            resp.next();
+          }
+        }
+      };
+      const successSpy = spyOn(spied, 'successFn').and.callThrough();
+      spyOn(SharedUtil, 'redirect');
+      const opt = {
+        stateToken: 'aStateToken',
+        globalSuccessFn: successSpy,
+      };
+
+      return setup(opt, resSuccessWithSTAF)
+        .then(function(test) {
+          test.setNextResponse(resSuccessWithSTAF);
+          test.router.refreshAuthState('dummy-token');
+          return Expect.waitForSpyCall(successSpy);
+        })
+        .then(function() {
+          const res = successSpy.calls.mostRecent().args[0];
+          expect(res.status).toBe('SUCCESS');
+          expect(res.session.token).toBe('THE_SESSION_TOKEN');
+          expect(_.isFunction(res.session.setCookieAndRedirect)).toBe(true);
+          expect(_.isFunction(res.next)).toBe(true);
+
+          expect(SharedUtil.redirect).toHaveBeenCalledWith(
+            'https://foo.com/login/sessionCookieRedirect?checkAccountSetupComplete=true' +
+              '&token=THE_SESSION_TOKEN&redirectUrl=http%3A%2F%2Fbaz.com%2Ffoo'
+          );
+          expect(SharedUtil.redirect).toHaveBeenCalledWith(
+            'http://foo.okta.com/login/token/redirect?stateToken=aStateToken'
+          );
+        });
+    }
+  );
   it('logs an error on unrecoverable errors if no globalErrorFn is defined', function() {
     const fn = function() {
       setup({ foo: 'bar' });
@@ -823,65 +872,64 @@ Expect.describe('LoginRouter', function() {
         expect(form.isRecoveryQuestion()).toBe(true);
       });
   });
-  itp('navigates to PrimaryAuth and shows a flash error if the stateToken expires', function() {
-    return setup({}, resRecovery)
-      .then(function(test) {
-        Util.mockRouterNavigate(test.router);
-        test.setNextResponse(resRecovery);
-        test.router.refreshAuthState('dummy-token');
-        return Expect.waitForRecoveryQuestion(test);
-      })
-      .then(function(test) {
-        test.setNextResponse(errorInvalidToken);
-        const form = new RecoveryForm($sandbox);
 
-        form.setAnswer('4444');
-        form.submit();
-        return Expect.waitForPrimaryAuth(test);
-      })
-      .then(function(test) {
-        expect(test.afterErrorHandler).toHaveBeenCalledTimes(1);
-        expect(test.afterErrorHandler.calls.allArgs()).toEqual([
-          [
-            { controller: 'primary-auth' },
-            {
-              name: 'AuthApiError',
-              message: 'Invalid token provided',
-              statusCode: 401,
-              xhr: {
-                status: 401,
-                responseType: 'json',
-                responseText: '{"errorCode":"E0000011","errorSummary":"Invalid token provided","errorLink":"E0000011","errorId":"oaeuiUWCPr6TUSkOclgVGlWqw","errorCauses":[]}',
-                responseJSON: {
-                  errorCode: 'E0000011',
-                  errorSummary: 'Invalid token provided',
-                  errorLink: 'E0000011',
-                  errorId: 'oaeuiUWCPr6TUSkOclgVGlWqw',
-                  errorCauses: [],
-                },
-              },
+  itp('navigates to PrimaryAuth and shows a flash error if the stateToken expires', async function() {
+    // flashError is set in RouterUtil, shown in courage BaseForm method: __showErrors
+    // BaseLoginRouter will see the flashError and trigger the error on PrimaryAuth model after render 
+    const test = await setup({}, resRecovery);
+    Util.mockRouterNavigate(test.router);
+    test.setNextResponse(resRecovery);
+    test.router.refreshAuthState('dummy-token');
+    await Expect.waitForRecoveryQuestion(test);
+    
+    test.setNextResponse(errorInvalidToken);
+    let form = new RecoveryForm($sandbox);
+
+    form.setAnswer('4444');
+    form.submit();
+    await Expect.waitForPrimaryAuth(test);
+
+    expect(test.afterErrorHandler).toHaveBeenCalledTimes(1);
+    expect(test.afterErrorHandler.calls.allArgs()).toEqual([
+      [
+        { controller: 'primary-auth' },
+        {
+          name: 'AuthApiError',
+          message: 'Invalid token provided',
+          statusCode: 401,
+          xhr: {
+            status: 401,
+            headers: { 'content-type': 'application/json' },
+            responseType: 'json',
+            responseText: '{"errorCode":"E0000011","errorSummary":"Invalid token provided","errorLink":"E0000011","errorId":"oaeuiUWCPr6TUSkOclgVGlWqw","errorCauses":[]}',
+            responseJSON: {
+              errorCode: 'E0000011',
+              errorSummary: 'Invalid token provided',
+              errorLink: 'E0000011',
+              errorId: 'oaeuiUWCPr6TUSkOclgVGlWqw',
+              errorCauses: [],
             },
-          ],
-        ]);
-        const form = new PrimaryAuthForm($sandbox);
+          },
+        },
+      ],
+    ]);
+    
+    form = new PrimaryAuthForm($sandbox);
+    expect(form.isPrimaryAuth()).toBe(true);
+    expect(form.hasErrors()).toBe(true);
+    expect(form.errorMessage()).toBe('Your session has expired. Please try to sign in again.');
 
-        expect(form.isPrimaryAuth()).toBe(true);
-        expect(form.hasErrors()).toBe(true);
-        expect(form.errorMessage()).toBe('Your session has expired. Please try to sign in again.');
+    // Submit the form and verify that we no longer have the flash error message
+    test.setNextResponse(resMfa);
+    form.setUsername('testuser');
+    form.setPassword('pass');
+    form.submit();
+    await Expect.waitForMfaVerify(test);
 
-        // Submit the form and verify that we no longer have the flash error message
-        test.setNextResponse(resMfa);
-        form.setUsername('testuser');
-        form.setPassword('pass');
-        form.submit();
-        return Expect.waitForMfaVerify(test);
-      })
-      .then(function() {
-        const form = new MfaVerifyForm($sandbox);
+    form = new MfaVerifyForm($sandbox);
 
-        expect(form.isSecurityQuestion()).toBe(true);
-        expect(form.hasErrors()).toBe(false);
-      });
+    expect(form.isSecurityQuestion()).toBe(true);
+    expect(form.hasErrors()).toBe(false);
   });
   itp('navigates to ErrorState page and shows a flash error if the stateToken expires', function() {
     return setup({'features.mfaOnlyFlow': true }, resRecovery)
@@ -910,6 +958,7 @@ Expect.describe('LoginRouter', function() {
               statusCode: 401,
               xhr: {
                 status: 401,
+                headers: { 'content-type': 'application/json' },
                 responseType: 'json',
                 responseText: '{"errorCode":"E0000011","errorSummary":"Invalid token provided","errorLink":"E0000011","errorId":"oaeuiUWCPr6TUSkOclgVGlWqw","errorCauses":[]}',
                 responseJSON: {
@@ -1399,6 +1448,11 @@ Expect.describe('LoginRouter', function() {
       Util.loadWellKnownAndKeysCache();
       const successSpy = jasmine.createSpy('successSpy');
 
+      // In this test the id token will be returned succesfully. It must pass all validation.
+      // Mock the date to 10 seconds after token was issued.
+      const AUTH_TIME = (1451606400) * 1000; // The time the "VALID_ID_TOKEN" was issued
+      jasmine.clock().mockDate(new Date(AUTH_TIME + 10000));
+
       return setupOAuth2({ globalSuccessFn: successSpy }, { mockWellKnown: true })
         .then(function(test) {
           return Expect.waitForWindowListener('message', test);
@@ -1421,7 +1475,7 @@ Expect.describe('LoginRouter', function() {
           const data = successSpy.calls.argsFor(0)[0];
 
           expect(data.status).toBe('SUCCESS');
-          expect(data.tokens.idToken.value).toBe(VALID_ID_TOKEN);
+          expect(data.tokens.idToken.idToken).toBe(VALID_ID_TOKEN);
           expect(data.tokens.idToken.claims).toEqual({
             amr: ['pwd'],
             aud: 'someClientId',
@@ -1607,6 +1661,7 @@ Expect.describe('LoginRouter', function() {
       'overrides text in the login bundle if language field and key in i18n object is in different cases',
       function() {
         return setupLanguage({
+          mockLanguageRequest: 'zz-zz',
           settings: {
             language: 'zz-zz',
             i18n: {
@@ -1624,6 +1679,7 @@ Expect.describe('LoginRouter', function() {
       'overrides text in the login bundle if language field and key in i18n object is in different cases',
       function() {
         return setupLanguage({
+          mockLanguageRequest: 'zz-ZZ',
           settings: {
             language: 'zz-ZZ',
             i18n: {
@@ -1641,6 +1697,7 @@ Expect.describe('LoginRouter', function() {
       'overrides text in the login bundle if language field and key in i18n object is in different cases',
       function() {
         return setupLanguage({
+          mockLanguageRequest: 'nl',
           settings: {
             language: 'nl',
             i18n: {
@@ -1658,6 +1715,7 @@ Expect.describe('LoginRouter', function() {
       'overrides text in the login bundle if language field and key in i18n object is in different cases',
       function() {
         return setupLanguage({
+          mockLanguageRequest: 'NL',
           settings: {
             language: 'NL',
             i18n: {
@@ -1703,6 +1761,7 @@ Expect.describe('LoginRouter', function() {
 
     itp('overrides text in the courage bundle for non English language', function() {
       return setupLanguage({
+        mockLanguageRequest: 'NL',
         settings: {
           language: 'NL',
           i18n: {
@@ -2039,6 +2098,7 @@ Expect.describe('LoginRouter', function() {
           const spy = jasmine.createSpy('language').and.returnValue('zz-zz');
 
           return setupLanguage({
+            mockLanguageRequest: 'zz-zz',
             settings: {
               language: spy,
               i18n: {
@@ -2102,6 +2162,7 @@ Expect.describe('LoginRouter', function() {
           })
           .then(function(test) {
             test.router.appState.set('languageCode', 'zz-zz');
+            expectUnsuportedLanguageLoad(test);
             test.router.enrollCall();
             return Expect.waitForEnrollCall(test);
           })
@@ -2195,5 +2256,23 @@ Expect.describe('LoginRouter', function() {
         });
       });
     });
+  });
+
+  itp('should not be visible until initial render', async function() {
+    const test = await setup();
+
+    // Should not be visible on init
+    Expect.isNotVisible(test.router.header.$el);
+
+    // Should not be visible until initial data has been loaded
+    spyOn(PrimaryAuthController.prototype, 'fetchInitialData').and.callFake(function() {
+      Expect.isNotVisible(test.router.header.$el);
+      return Promise.resolve();
+    });
+
+    // Should be visible after render
+    await test.router.render(PrimaryAuthController, { Beacon: SecurityBeacon });
+    Expect.isVisible(test.router.header.$el);
+    expect(test.afterRenderHandler).toHaveBeenCalledTimes(1);
   });
 });

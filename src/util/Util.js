@@ -28,6 +28,12 @@ const buildInputForParameter = function(name, value) {
   return input;
 };
 
+const buildSubmitInput = function() {
+  const input = document.createElement('input');
+  input.type = 'submit';
+  return input;
+};
+
 const buildDynamicForm = function(url = '', method) {
   const splitOnFragment = url.split('#');
   const fragment = splitOnFragment[1];
@@ -54,6 +60,8 @@ const buildDynamicForm = function(url = '', method) {
       form.appendChild(input);
     });
   }
+  form.appendChild(buildSubmitInput());
+
   return form;
 };
 
@@ -99,7 +107,7 @@ Util.toLower = function(strings) {
 };
 
 // A languageCode can be composed of multiple parts, i.e:
-// {{langage}}-{{region}}-{{dialect}}
+// {{language}}-{{region}}-{{dialect}}
 //
 // In these cases, it's necessary to generate a list of other possible
 // combinations that we might support (in preferred order).
@@ -135,6 +143,10 @@ Util.debugMessage = function(message) {
   Logger.warn(`\n${message.replace(/^(\s)+/gm, '')}`);
 };
 
+Util.logConsoleError = function(message) {
+  Logger.error(message);
+};
+
 // Trigger an afterError event
 Util.triggerAfterError = function(controller, err = {}) {
   if (!err.statusCode && err.xhr && err.xhr.status) {
@@ -151,12 +163,12 @@ Util.triggerAfterError = function(controller, err = {}) {
   Logger.warn('controller: ' + className + ', error: ' + error);
 };
 
-Util.redirect = function(url, win = window) {
+Util.redirect = function(url, win = window, isAppLink = false) {
   if (!url) {
     Logger.error(`Cannot redirect to empty URL: (${url})`);
     return;
   }
-  if (BrowserFeatures.isAndroid()) {
+  if (BrowserFeatures.isAndroid() && !isAppLink) {
     Util.redirectWithFormGet(url);
   } else {
     win.location.href = url;
@@ -196,7 +208,7 @@ Util.redirectWithForm = function(url, method = 'post') {
   const form = buildDynamicForm(url, method);
 
   mainContainer.appendChild(form);
-  form.submit();
+  form.querySelector('input[type="submit"]').click();
 };
 
 /**
@@ -217,20 +229,6 @@ Util.createInputExplain = function(explainKey, labelKey, bundleName, explainPara
 
 Util.isV1StateToken = function(token) {
   return !!(token && _.isString(token) && token.startsWith('00'));
-};
-
-// TODO: remove when auth-js is updated: OKTA-325445
-Util.removeNils = function removeNils(obj) {
-  var cleaned = {};
-  for (var prop in obj) {
-    if (Object.prototype.hasOwnProperty.call(obj, prop)) {
-      var value = obj[prop];
-      if (value !== null && value !== undefined) {
-        cleaned[prop] = value;
-      }
-    }
-  }
-  return cleaned;
 };
 
 export default Util;

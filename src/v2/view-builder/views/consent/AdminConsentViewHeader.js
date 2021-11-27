@@ -5,7 +5,7 @@ const defaultLogo = '/img/logos/default.png';
 
 const AdminConsentViewHeader = View.extend({
   className: 'consent-title detail-row',
-  titleText: () => loc('oie.consent.admin.title', 'login'),
+  titleText: () => loc('oie.consent.scopes.admin.title', 'login'),
   hasIssuer: true,
   template: hbs`
     {{#if clientURI}}
@@ -21,10 +21,10 @@ const AdminConsentViewHeader = View.extend({
     {{/if}}
     <h1>
       <span class="title-text">
-        <b>{{appName}}</b>&nbsp;{{titleText}}
+        <b class="no-translate">{{appName}}</b>&nbsp;{{titleText}}
       </span>
       {{#if issuer}}
-        <div class="issuer"><span>{{issuer}}</span></div>
+        <div class="issuer no-translate"><span>{{issuer}}</span></div>
       {{/if}}
     </h1>`,
   getTemplateData: function() {
@@ -33,7 +33,7 @@ const AdminConsentViewHeader = View.extend({
     const { issuer: issuerObj } = appState.get('authentication');
 
     const customLogo = logo?.href;
-    const altText = logo?.alt || 'aria logo';
+    const altText = loc('logo.for.the.app.alt.text', 'login');
     const appName = _.escape(label);
     const clientURI = clientUri?.href;
 

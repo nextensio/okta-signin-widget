@@ -16,6 +16,30 @@ export default class BasePageObject {
     this.form = new BaseFormObject(t);
   }
 
+  async mockCrypto() {
+    await ClientFunction(() => {
+      if (typeof window.crypto === 'undefined') {
+        window.crypto = {};
+      }
+    
+      if (typeof window.crypto.subtle === 'undefined') {
+        window.crypto.subtle = {
+          digest: function() {
+            return Promise.resolve(65);
+          }
+        };
+      }
+    
+      if (typeof Uint8Array === 'undefined') {
+        window['Uint8Array'] = window.Number;
+      }
+    
+      String.fromCharCode = function() {
+        return 'mocked';
+      };
+    })();
+  }
+
   async navigateToPage(queryParams) {
     let qs = '';
     if (queryParams) {
@@ -27,6 +51,16 @@ export default class BasePageObject {
     await this.t.navigateTo(`http://localhost:3000${this.url}${qs}`);
   }
 
+  async preventRedirect(toUrls) {
+    await ClientFunction((toUrls) => {
+      window.addEventListener('submit', function(e) {
+        if (!toUrls || toUrls.includes(e.target.action)) {
+          e.preventDefault();
+        }
+      });
+    })(toUrls);
+  }
+
   async getPageUrl() {
     const pageUrl = await ClientFunction(() => window.location.href)();
     return pageUrl;
@@ -34,6 +68,10 @@ export default class BasePageObject {
 
   getFormTitle() {
     return this.form.getTitle();
+  }
+
+  getFormFieldLabel(field) {
+    return this.form.getFormFieldLabel(field);
   }
 
   getSaveButtonLabel() {
@@ -59,6 +97,10 @@ export default class BasePageObject {
 
   getSignoutLinkText() {
     return Selector(SIGNOUT_LINK).textContent;
+  }
+
+  async clickSignOutLink() {
+    await this.t.click(Selector(SIGNOUT_LINK));
   }
 
   async goBackLinkExists() {
@@ -92,6 +134,10 @@ export default class BasePageObject {
     return Selector(SKIP_SET_UP_LINK).textContent;
   }
 
+  getErrorBoxText() {
+    return this.form.getErrorBoxText();
+  }
+
   async clickSetUpSkipLink() {
     await this.t.click(Selector(SKIP_SET_UP_LINK));
   }
@@ -111,5 +157,9 @@ export default class BasePageObject {
 
   getBeaconClass() {
     return this.beacon.find('[data-se="factor-beacon"]').getAttribute('class');
+  }
+
+  refresh() {
+    return this.t.eval(() => location.reload(true));
   }
 }

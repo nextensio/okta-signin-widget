@@ -1,5 +1,6 @@
-import { View, _, $ } from 'okta';
+import { View, _, $} from 'okta';
 import Link from '../components/Link';
+import ToggleTextLink from '../components/ToggleTextLink';
 import { getSignOutLink } from '../utils/LinksUtil';
 
 /**
@@ -27,8 +28,22 @@ export default View.extend({
    */
   links: [],
 
+  /**
+   * View
+   * adds any view to the footer in footer info section
+   */ 
+  footerInfo: null,
+
+  /**
+   * Boolean
+   * If false then 'Back to sign in' does not get added to the view
+   */
+  hasBackToSignInLink: true,
+
   initialize() {
     let links = _.resultCtx(this, 'links', this);
+    const footerInfo = _.resultCtx(this, 'footerInfo', this);
+    const hasBackToSignInLink = _.resultCtx(this, 'hasBackToSignInLink', this);
 
     // safe check
     // 1. avoid none array from override
@@ -39,17 +54,28 @@ export default View.extend({
       links = links.filter(l => $.isPlainObject(l));
     }
 
-    // add cancel/signout link if the form qualifies for it
+    // add 'back to sign in' link if the form qualifies for it by default.
+    // Previously called cancel/Sign Out links
     if (this.options.appState.shouldShowSignOutLinkInCurrentForm(
       this.options.settings.get('features.hideSignOutLinkInMFA') ||
-      this.settings.get('features.mfaOnlyFlow'))) {
+      this.settings.get('features.mfaOnlyFlow')) && hasBackToSignInLink) {
       links = links.concat(getSignOutLink(this.options.settings));
     }
 
     links.forEach(link => {
-      this.add(Link, {
-        options: link,
-      });
+      let LinkView = Link;
+      if (link.type === 'toggle-text-link') {
+        LinkView = ToggleTextLink;
+      }
+      this.add(LinkView, { options: link });
     });
+
+    if (footerInfo) {
+      this.add(View.extend({
+        className: 'footer-info',
+      }));
+
+      this.add(footerInfo, '.footer-info');
+    }
   }
 });

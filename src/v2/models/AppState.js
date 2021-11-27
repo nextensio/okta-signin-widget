@@ -12,9 +12,15 @@
 
 import { Model } from 'okta';
 import Logger from 'util/Logger';
-import { FORMS_WITHOUT_SIGNOUT, FORMS_WITH_STATIC_BACK_LINK,
-  FORMS_FOR_VERIFICATION } from '../ion/RemediationConstants';
+import {
+  FORMS_WITHOUT_SIGNOUT,
+  FORMS_WITH_STATIC_BACK_LINK,
+  FORMS_FOR_VERIFICATION,
+  AUTHENTICATOR_KEY,
+} from '../ion/RemediationConstants';
+import { createOVOptions } from '../ion/ui-schema/ion-object-handler';
 import { _ } from '../mixins/mixins';
+import { executeHooksBefore, executeHooksAfter } from 'util/Hooks';
 
 /**
  * Keep track of stateMachine with this special model. Similar to `src/models/AppState.js`
@@ -22,14 +28,13 @@ import { _ } from '../mixins/mixins';
 export default Model.extend({
 
   local: {
-    introspectSuccess: 'object', // only set during introspection
-    introspectError: 'object', // only set during introspection
     user: 'object',        // optional
     currentFormName: 'string',
     idx: 'object',
     remediations: 'array',
     dynamicRefreshInterval: 'number',
     deviceFingerprint: 'string',
+    hooks: 'object' // instance of models/Hooks
   },
 
   derived: {
@@ -65,8 +70,30 @@ export default Model.extend({
     }
   },
 
+  isIdentifierOnlyView() {
+    return !this.get('remediations')?.find(({ name }) => name === 'identify')
+      ?.uiSchema?.find(({ name }) => name === 'credentials.passcode');
+  },
+
   hasRemediationObject(formName) {
     return this.get('idx').neededToProceed.find((remediation) => remediation.name === formName);
+  },
+
+  hasActionObject(actionName) {
+    return !!this.get('idx')?.actions?.[actionName];
+  },
+
+  getRemediationAuthenticationOptions(formName) {
+    const form = this.hasRemediationObject(formName);
+    if (!form) {
+      return [];
+    }
+    const authenticator = form.value.find((value) => value.name === 'authenticator');
+    let authenticatorOptions = authenticator?.options || [];
+    // OV is a special case, so process OV options
+    authenticatorOptions = [...authenticatorOptions]; //clone it since we are changing it for OV
+    createOVOptions(authenticatorOptions);
+    return authenticatorOptions;
   },
 
   getActionByPath(actionPath) {
@@ -97,7 +124,7 @@ export default Model.extend({
     // didn't expect `remediations` is empty. See `setIonResponse`.
     const currentViewState = this.get('remediations').filter(r => r.name === currentFormName)[0];
 
-    if (!currentViewState ) {
+    if (!currentViewState) {
       Logger.error('Panic!!');
       Logger.error(`\tCannot find view state for form ${currentFormName}.`);
       const allFormNames = this.get('remediations').map(r => r.name);
@@ -105,6 +132,19 @@ export default Model.extend({
     }
 
     return currentViewState;
+  },
+
+  /**
+   * Returns ui schema of the form field from current view state
+   * @param {string} fieldName
+   * @returns {}
+   */
+  getSchemaByName(fieldName) {
+    const currentViewState = this.getCurrentViewState();
+    if(currentViewState) {
+      const uiSchema = currentViewState.uiSchema;
+      return uiSchema.find(({ name }) => name === fieldName);
+    }
   },
 
   /**
@@ -130,8 +170,12 @@ export default Model.extend({
   },
 
   shouldReRenderView(transformedResponse) {
+    if (transformedResponse?.idx?.hasFormError) {
+      return false;
+    }
+
     const previousRawState = this.has('idx') ? this.get('idx').rawIdxState : null;
-    
+
     const identicalResponse = _.isEqual(
       _.nestedOmit(transformedResponse.idx.rawIdxState, ['expiresAt', 'refresh', 'stateHandle']),
       _.nestedOmit(previousRawState, ['expiresAt', 'refresh', 'stateHandle']));
@@ -143,7 +187,105 @@ export default Model.extend({
       this.set('dynamicRefreshInterval', this.getRefreshInterval(transformedResponse));
     }
 
+    return this._isReRenderRequired(identicalResponse, transformedResponse, previousRawState);
+  },
+
+  getRefreshInterval(transformedResponse) {
+    // Only polling refresh interval has changed in the response,
+    // make sure to update the correct poll view's refresh value
+    const currentFormName = this.get('currentFormName');
+    const currentViewState = transformedResponse.remediations.filter(r => r.name === currentFormName)[0];
+    // Get new refresh interval for either: remediations, authenticator, or authenticator enrollment
+    return currentViewState.refresh ||
+      transformedResponse.currentAuthenticatorEnrollment?.poll?.refresh ||
+      transformedResponse.currentAuthenticator?.poll?.refresh;
+  },
+
+  // Sign Out link will be displayed in the footer of a form, unless:
+  // - widget configuration set hideSignOutLinkInMFA or mfaOnlyFlow to true
+  // - cancel remediation form is not present in the response
+  // - form is part of our list FORMS_WITHOUT_SIGNOUT
+  shouldShowSignOutLinkInCurrentForm(hideSignOutLinkInMFA) {
+    const idxActions = this.get('idx') && this.get('idx').actions;
+    const currentFormName = this.get('currentFormName');
+
+    return !hideSignOutLinkInMFA
+      && _.isFunction(idxActions?.cancel)
+      && !FORMS_WITHOUT_SIGNOUT.includes(currentFormName);
+  },
+
+  containsMessageWithI18nKey(keys) {
+    if (!Array.isArray(keys)) {
+      keys = [keys];
+    }
+    const messagesObjs = this.get('messages');
+    return messagesObjs && Array.isArray(messagesObjs.value)
+      && messagesObjs.value.some(messagesObj => _.contains(keys, messagesObj.i18n?.key));
+  },
+
+  containsMessageStartingWithI18nKey(keySubStr) {
+    const messagesObjs = this.get('messages');
+    return messagesObjs && Array.isArray(messagesObjs.value)
+      && messagesObjs.value.some(messagesObj => messagesObj.i18n?.key.startsWith(keySubStr));
+  },
+
+  clearAppStateCache() {
+    // clear appState before setting new values
+    const attrs = {};
+    for (var key in this.attributes) {
+      if (key !== 'currentFormName') {
+        attrs[key] = void 0;
+      }
+    }
+    this.set(attrs, Object.assign({}, { unset: true, silent: true }));
+    // clear cache for derived props.
+    this.trigger('cache:clear');
+  },
+
+  async setIonResponse(transformedResponse, hooks) {
+    const doRerender = this.shouldReRenderView(transformedResponse);
+    this.clearAppStateCache();
+    // set new app state properties
+    this.set(transformedResponse);
+
+    if (doRerender) {
+      // `currentFormName` is default to first form of remediations or nothing.
+      let currentFormName = null;
+      if (!_.isEmpty(transformedResponse.remediations)) {
+        currentFormName = transformedResponse.remediations[0].name;
+      } else {
+        Logger.error('Panic!!');
+        Logger.error('\tNo remediation found.');
+        Logger.error('\tHere is the entire response');
+        Logger.error(JSON.stringify(transformedResponse, null, 2));
+      }
+
+      const hook = hooks?.getHook(currentFormName); // may be undefined
+      await executeHooksBefore(hook);
+  
+      this.unset('currentFormName', { silent: true });
+      // make sure change `currentFormName` is last step.
+      // change `currentFormName` will re-render FormController,
+      // which may depend on other derived properties hence
+      // those derived properties must be re-computed before
+      // re-rendering controller.
+      this.set({ currentFormName });
+
+      await executeHooksAfter(hook);
+    }
+  },
+
+  getUser: function() {
+    return this.get('user');
+  },
+
+  _isReRenderRequired(identicalResponse, transformedResponse, previousRawState) {
     let reRender = true;
+
+    const isPreviousStateError = this.get('idx')?.hasFormError;
+    if (isPreviousStateError && this._isChallengeAuthenticatorPoll(transformedResponse, previousRawState)) {
+      reRender = false;
+    }
 
     if (identicalResponse) {
       /**
@@ -175,78 +317,20 @@ export default Model.extend({
     return reRender;
   },
 
-  getRefreshInterval(transformedResponse) {
-    // Only polling refresh interval has changed in the response,
-    // make sure to update the correct poll view's refresh value
-    const currentFormName = this.get('currentFormName');
-    const currentViewState = transformedResponse.remediations.filter(r => r.name === currentFormName)[0];
-    // Get new refresh interval for either: remediations, authenticator, or authenticator enrollment
-    return currentViewState.refresh ||
-      transformedResponse.currentAuthenticatorEnrollment?.poll?.refresh ||
-      transformedResponse.currentAuthenticator?.poll?.refresh;
-  },
+  /**
+   * This is to account for the edge case introduced by this issue: OKTA-419210. With the current idx remediations,
+   * there's no good way to generalize this as the backend handles the authenticators for phone, sms and 
+   * email differently. Although not ideal, we have to keep this check in for now until we find a better solution.
+   */
+  _isChallengeAuthenticatorPoll(transformedResponse, previousRawState) {
+    const isSameExceptMessages = _.isEqual(
+      _.nestedOmit(transformedResponse.idx.rawIdxState, ['expiresAt', 'refresh', 'stateHandle']),
+      _.nestedOmit(previousRawState, ['expiresAt', 'refresh', 'stateHandle', 'messages']));      
 
-  // Sign Out link will be displayed in the footer of a form, unless
-  // - widget config hideSignOutLinkInMFA=true or mfaOnlyFlow=true
-  // and form is for identity verification (FORMS_FOR_VERIFICATION)
-  // - cancel remediation form is not present in the response
-  // - form is part of our list FORMS_WITHOUT_SIGNOUT
-  shouldShowSignOutLinkInCurrentForm(hideSignOutLinkInMFA) {
-    const idxActions = this.get('idx') && this.get('idx').actions;
-    const currentFormName = this.get('currentFormName');
-    const hideSignOutConfigOverride = hideSignOutLinkInMFA
-      && FORMS_FOR_VERIFICATION.includes(currentFormName);
+    const isChallengeAuthenticator = this.get('currentFormName') === 'challenge-authenticator';
+    const isCurrentAuthenticatorEmail = this.get('currentAuthenticatorEnrollment')?.key === AUTHENTICATOR_KEY.EMAIL;
 
-    return !hideSignOutConfigOverride
-      && _.isFunction(idxActions?.cancel)
-      && !FORMS_WITHOUT_SIGNOUT.includes(currentFormName);
-  },
-
-  containsMessageWithI18nKey(keys) {
-    if (!Array.isArray(keys)) {
-      keys = [ keys ];
-    }
-    const messagesObjs = this.get('messages');
-    return messagesObjs && Array.isArray(messagesObjs.value)
-      && messagesObjs.value.some(messagesObj => _.contains(keys, messagesObj.i18n?.key));
-  },
-
-  containsMessageStartingWithI18nKey(keySubStr) {
-    const messagesObjs = this.get('messages');
-    return messagesObjs && Array.isArray(messagesObjs.value)
-      && messagesObjs.value.some(messagesObj => messagesObj.i18n?.key.startsWith(keySubStr));
-  },
-
-  setIonResponse(transformedResponse) {
-    if (!this.shouldReRenderView(transformedResponse)){
-      return;
-    }
-
-    // `currentFormName` is default to first form of remediations or nothing.
-    let currentFormName = null;
-    if (!_.isEmpty(transformedResponse.remediations)) {
-      currentFormName = transformedResponse.remediations[0].name;
-    } else {
-      Logger.error('Panic!!');
-      Logger.error('\tNo remediation found.');
-      Logger.error('\tHere is the entire response');
-      Logger.error(JSON.stringify(transformedResponse, null, 2));
-    }
-
-    // clear appState before setting new values
-    this.clear({silent: true});
-    // clear cache for derived props.
-    this.trigger('cache:clear');
-
-    // set new app state properties
-    this.set(transformedResponse);
-
-    // make sure change `currentFormName` is last step.
-    // change `currentFormName` will re-render FormController,
-    // which may depend on other derived properties hence
-    // those derived properties must be re-computed before
-    // re-rendering controller.
-    this.set({ currentFormName });
+    return isSameExceptMessages && isChallengeAuthenticator && isCurrentAuthenticatorEmail;
   }
 
 });

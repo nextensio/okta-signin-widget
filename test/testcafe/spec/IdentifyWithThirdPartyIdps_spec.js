@@ -6,6 +6,7 @@ import identifyWithIdpsIdentify from '../../../playground/mocks/data/idp/idx/ide
 import identifyWithIdpsNoIdentify from '../../../playground/mocks/data/idp/idx/identify-with-only-third-party-idps';
 import identifyOnlyOneIdp from '../../../playground/mocks/data/idp/idx/identify-with-only-one-third-party-idp';
 import identifyOnlyOneIdpAppUser from '../../../playground/mocks/data/idp/idx/identify-with-only-one-third-party-idp-app-user';
+import errorIdentifyOnlyOneIdp from '../../../playground/mocks/data/idp/idx/error-identify-with-only-one-third-party-idp';
 
 const logger = RequestLogger(/introspect/,
   {
@@ -41,6 +42,12 @@ const mockIdpDiscoveryWithOneIdp = RequestMock()
   .respond(identifyOnlyOneIdp)
   .onRequestTo('http://localhost:3000/sso/idps/facebook-idp-id-123?stateToken=inRUXNhsc6Evt7GAb8DPAA')
   .respond('<html><h1>An external IdP login page for testcafe testing</h1></html>');
+
+const mockErrorIdentifyOnlyOneIdp = RequestMock()
+  .onRequestTo('http://localhost:3000/idp/idx/introspect')
+  .respond(identifyWithName)
+  .onRequestTo('http://localhost:3000/idp/idx/identify')
+  .respond(errorIdentifyOnlyOneIdp);
 
 const renderWidget = ClientFunction((settings) => {
   // function `renderPlaygroundWidget` is defined in playground/main.js
@@ -110,9 +117,6 @@ test.requestHooks(mockWithoutIdentify)('should only render idp buttons with iden
   await t.expect(identityPage.getIdpButton('.social-auth-google-button').textContent).eql('Sign in with Google');
   await t.expect(identityPage.getIdpButton('.social-auth-linkedin-button').textContent).eql('Sign in with LinkedIn');
   await t.expect(identityPage.getIdpButton('.social-auth-microsoft-button').textContent).eql('Sign in with Microsoft');
-
-  // no signout link at enroll page
-  await t.expect(await identityPage.signoutLinkExists()).notOk();
 });
 
 test.requestHooks(logger, mockOnlyOneIdp)('should auto redirect to 3rd party IdP login page with basic Signing in message', async t => {
@@ -197,4 +201,26 @@ test.requestHooks(logger, mockIdpDiscoveryWithOneIdp)('Direct auth: IDP discover
   await t.expect(pageUrl).eql('http://localhost:3000/sso/idps/facebook-idp-id-123?stateToken=inRUXNhsc6Evt7GAb8DPAA');
 
   await t.expect(logger.contains(record => record.response.statusCode === 200)).ok();
+});
+
+test.requestHooks(logger, mockWithoutIdentify)('custom idps should show correct label', async t => {
+  const identityPage = await setup(t);
+  await t.expect(identityPage.getIdpsContainer().childElementCount).eql(6);
+  await t.expect(identityPage.getCustomIdpButtonLabel(0)).contains('Sign in with My SAML IDP');
+  await t.expect(identityPage.getCustomIdpButtonLabel(1)).eql('Sign in with SAML IDP');
+});
+
+test.requestHooks(logger, mockWithoutIdentify)('view with only idp buttons should render "Back to Sign In" link', async t => {
+  const identityPage = await setup(t);
+  await t.expect(identityPage.getIdpsContainer().childElementCount).eql(6);
+  await t.expect(await identityPage.signoutLinkExists()).ok();
+});
+
+test.requestHooks(logger, mockErrorIdentifyOnlyOneIdp)('show terminal error on idp provider error', async t => {
+  const identityPage = await setup(t);
+  await identityPage.fillIdentifierField('Test Identifier');
+  await identityPage.clickNextButton();
+  await t.expect(identityPage.getErrorBoxText())
+    .eql('There was a problem signing you into your identity provider. Please contact your administrator for help.');
+  await t.expect(await identityPage.signoutLinkExists()).ok();
 });

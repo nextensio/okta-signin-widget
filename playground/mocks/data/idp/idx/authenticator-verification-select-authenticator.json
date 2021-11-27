@@ -363,6 +363,49 @@
                   }
                 },
                 "relatesTo": "$.authenticatorEnrollments.value[14]"
+              },
+              {
+                "label": "YubiKey Authenticator",
+                "value": {
+                  "form": {
+                    "value": [
+                      {
+                        "name": "id",
+                        "required": true,
+                        "value": "aut11ceMaP0B0EzMI0g4",
+                        "mutable": false
+                      }
+                    ]
+                  }
+                },
+                "relatesTo": "$.authenticatorEnrollments.value[15]"
+              },
+              {
+                "label":"Custom Push App",
+                "value":{
+                   "form":{
+                      "value":[
+                         {
+                            "name":"id",
+                            "required":true,
+                            "value":"aut198w4v0f8dr8gT0g4",
+                            "mutable":false
+                         },
+                         {
+                            "name":"methodType",
+                            "type":"string",
+                            "required":false,
+                            "options":[
+                              {
+                                  "label":"Get a push notification",
+                                  "value":"push"
+                               }
+                            ]
+                         }
+                      ]
+                   }
+                },
+                "relatesTo":"$.authenticatorEnrollments.value[16]"
               }
             ]
           },
@@ -543,6 +586,32 @@
         "methods": [
           {
             "type": "otp"
+          }
+        ]
+      },
+      {
+        "type": "security_key",
+        "key": "yubikey_token",
+        "id": "aut11ceMaP0B0EzMI0g4",
+        "displayName": "YubiKey Authenticator",
+        "methods": [
+          {
+            "type": "otp"
+          }
+        ]
+      },
+      {
+        "profile":{
+          "deviceName":"Todd’s iPhone"
+        },
+        "type":"app",
+        "key":"custom_app",
+        "id":"pfd1bmoy4nH6heq2v0g4",
+        "displayName":"Custom Push App",
+        "logo": "http://localhost:3000/img/icons/mfa/custom_push.svg",
+        "methods":[
+          {
+            "type":"push"
           }
         ]
       }

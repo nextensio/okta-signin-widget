@@ -1,7 +1,7 @@
 import { Selector } from 'testcafe';
 import BasePageObject from './BasePageObject';
 
-const CALLOUT_SELECTOR = '.infobox-warning > div';
+const CALLOUT_SELECTOR = '[data-se="callout"]';
 const ENROLL_SELECTOR = 'a[data-se="enroll"]';
 const NEEDHELP_SELECTOR = 'a[data-se="help"]';
 const FORGOT_PASSWORD_SELECTOR = 'a[data-se="forgot-password"]';
@@ -13,6 +13,8 @@ const CUSTOM_BUTTON = '.custom-buttons .okta-custom-buttons-container .default-c
 const UNLOCK_ACCOUNT = '.auth-footer .js-unlock';
 const SUB_LABEL_SELECTOR = '.o-form-explain';
 const IDPS_CONTAINER = '.okta-idps-container';
+const FOOTER_INFO_SELECTOR = '.footer-info';
+const CUSTOM_IDP_BUTTON = '.social-auth-general-idp-button';
 
 export default class IdentityPageObject extends BasePageObject {
   constructor(t) {
@@ -84,6 +86,10 @@ export default class IdentityPageObject extends BasePageObject {
     return await Selector('.password-toggle').count;
   }
 
+  getSaveButtonLabel() {
+    return this.form.getSaveButtonLabel();
+  }
+
   clickNextButton() {
     return this.form.clickSaveButton();
   }
@@ -108,8 +114,28 @@ export default class IdentityPageObject extends BasePageObject {
     return this.form.hasTextBoxErrorMessage('identifier');
   }
 
+  getIdentifierErrorMessage() {
+    return this.form.getTextBoxErrorMessage('identifier');
+  }
+
+  hasPasswordError() {
+    return this.form.hasTextBoxError('credentials\\.passcode');
+  }
+
+  hasPasswordErrorMessage() {
+    return this.form.hasTextBoxErrorMessage('credentials\\.passcode');
+  }
+
+  getPasswordErrorMessage() {
+    return this.form.getTextBoxErrorMessage('credentials\\.passcode');
+  }
+
   hasCallout() {
     return !this.form.getCallout(CALLOUT_SELECTOR);
+  }
+
+  hasUnknownUserErrorCallout() {
+    return this.form.getCallout(CALLOUT_SELECTOR).hasClass('infobox-error');
   }
 
   getUnknownUserCalloutContent() {
@@ -144,6 +170,10 @@ export default class IdentityPageObject extends BasePageObject {
     return Selector(CUSTOM_HELP_LINKS_SELECTOR).nth(index).textContent;
   }
 
+  getFooterInfo() {
+    return Selector(FOOTER_INFO_SELECTOR).textContent;
+  }
+
   async clickCustomButtonLink(index) {
     await this.t.click(Selector(CUSTOM_BUTTON).nth(index));
   }
@@ -174,5 +204,9 @@ export default class IdentityPageObject extends BasePageObject {
 
   getIdpsContainer() {
     return Selector(IDPS_CONTAINER);
+  }
+
+  getCustomIdpButtonLabel(index) {
+    return Selector(CUSTOM_IDP_BUTTON).nth(index).textContent;
   }
 }

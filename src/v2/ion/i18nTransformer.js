@@ -35,7 +35,7 @@
 // Step 2. Find idx response path, for eg. select-authenticator-enroll.authenticator.email
 // Step 3. Make that path a key and add it to I18N_OVERRIDE_MAPPINGS if doesn't exist already
 // Step 4. If you find a key in Step 1 that already exists, use it as value of key created in Step 3, 
-//          else create a new lable `oie.your.new.label` and add it.
+//          else create a new label `oie.your.new.label` and add it.
 // Step 5. If you create a new label then add that to login.properties file with proper string
 //         oie.your.new.label = Your new string
 ///////////////////////////////////////////////////////////////////////////////
@@ -46,6 +46,8 @@ import Logger from 'util/Logger';
 import { getAuthenticatorDisplayName } from '../view-builder/utils/AuthenticatorUtil';
 import { FORMS, AUTHENTICATOR_KEY } from './RemediationConstants';
 
+const WEBAUTHN_API_GENERIC_ERROR_KEY = 'authfactor.webauthn.error';
+
 const SECURITY_QUESTION_PREFIXES = [
   'enroll-authenticator.security_question.credentials.questionKey.',
   'challenge-authenticator.security_question.credentials.questionKey.',
@@ -53,49 +55,60 @@ const SECURITY_QUESTION_PREFIXES = [
 
 const I18N_OVERRIDE_MAPPINGS = {
   'identify.identifier': 'primaryauth.username.placeholder',
+  'select-authenticator-unlock-account.identifier': 'primaryauth.username.placeholder',
   'identify.credentials.passcode': 'primaryauth.password.placeholder',
   'identify.rememberMe': 'oie.remember',
 
   'identify-recovery.identifier': 'password.forgot.email.or.username.placeholder',
 
+  'select-authenticator-enroll.authenticator.duo': 'factor.duo',
+  'select-authenticator-enroll.authenticator.google_otp': 'oie.google_authenticator.label',
   'select-authenticator-enroll.authenticator.okta_email': 'oie.email.label',
   'select-authenticator-enroll.authenticator.okta_password': 'oie.password.label',
-  'select-authenticator-enroll.authenticator.phone_number': 'oie.phone.label',
-  'select-authenticator-enroll.authenticator.webauthn': 'oie.webauthn.label',
-  'select-authenticator-enroll.authenticator.security_question': 'oie.security.question.label',
   'select-authenticator-enroll.authenticator.okta_verify': 'oie.okta_verify.label',
-  'select-authenticator-enroll.authenticator.google_otp': 'oie.google_authenticator.label',
+  'select-authenticator-enroll.authenticator.phone_number': 'oie.phone.label',
   'select-authenticator-enroll.authenticator.rsa_token': 'factor.totpHard.rsaSecurId',
+  'select-authenticator-enroll.authenticator.security_question': 'oie.security.question.label',
+  'select-authenticator-enroll.authenticator.symantec_vip': 'factor.totpHard.symantecVip',
+  'select-authenticator-enroll.authenticator.webauthn': 'oie.webauthn.label',
+  'select-authenticator-enroll.authenticator.yubikey_token': 'oie.yubikey.label',
 
+  'select-authenticator-authenticate.authenticator.duo': 'factor.duo',
+  'select-authenticator-authenticate.authenticator.google_otp': 'oie.google_authenticator.label',
   'select-authenticator-authenticate.authenticator.okta_email': 'oie.email.label',
   'select-authenticator-authenticate.authenticator.okta_password': 'oie.password.label',
-  'select-authenticator-authenticate.authenticator.phone_number': 'oie.phone.label',
-  'select-authenticator-authenticate.authenticator.webauthn': 'oie.webauthn.label',
-  'select-authenticator-authenticate.authenticator.security_question': 'oie.security.question.label',
-  'select-authenticator-authenticate.authenticator.okta_verify.signed_nonce': 'oie.okta_verify.signed_nonce.label',
   'select-authenticator-authenticate.authenticator.okta_verify.push': 'oie.okta_verify.push.title',
+  'select-authenticator-authenticate.authenticator.okta_verify.signed_nonce': 'oie.okta_verify.signed_nonce.label',
   'select-authenticator-authenticate.authenticator.okta_verify.totp': 'oie.okta_verify.totp.title',
-  'select-authenticator-authenticate.authenticator.google_otp': 'oie.google_authenticator.label',
+  'select-authenticator-authenticate.authenticator.phone_number': 'oie.phone.label',
   'select-authenticator-authenticate.authenticator.rsa_token': 'factor.totpHard.rsaSecurId',
+  'select-authenticator-authenticate.authenticator.security_question': 'oie.security.question.label',
+  'select-authenticator-authenticate.authenticator.symantec_vip': 'factor.totpHard.symantecVip',
+  'select-authenticator-authenticate.authenticator.webauthn': 'oie.webauthn.label',
+  'select-authenticator-authenticate.authenticator.yubikey_token': 'oie.yubikey.label',
 
   'select-authenticator-unlock-account.authenticator.okta_email': 'oie.email.label',
   'select-authenticator-unlock-account.authenticator.phone_number': 'oie.phone.label',
-
+  'select-authenticator-unlock-account.authenticator.okta_verify.push': 'oie.okta_verify.push.title',
+  
   'authenticator-verification-data.okta_verify.authenticator.methodType.signed_nonce':
     'oie.okta_verify.signed_nonce.label',
   'authenticator-verification-data.okta_verify.authenticator.methodType.push': 'oie.okta_verify.push.title',
   'authenticator-verification-data.okta_verify.authenticator.methodType.totp': 'oie.okta_verify.totp.title',
 
   'authenticator-enrollment-data.phone_number.authenticator.phoneNumber': 'mfa.phoneNumber.placeholder',
+  'authenticator-enrollment-data.phone_number.authenticator.methodType.sms': 'oie.phone.enroll.sms.label',
+  'authenticator-enrollment-data.phone_number.authenticator.methodType.voice': 'oie.phone.enroll.voice.label',
 
   'enroll-authenticator.okta_password.credentials.passcode': 'oie.password.passwordLabel',
-  'enroll-authenticator.phone.credentials.passcode': 'mfa.challenge.enterCode.placeholder',
+  'enroll-authenticator.okta_email.credentials.passcode': 'mfa.challenge.enterCode.placeholder',
+  'enroll-authenticator.phone_number.credentials.passcode': 'mfa.challenge.enterCode.placeholder',
   'enroll-authenticator.security_question.sub_schema_local_credentials.0': 'oie.security.question.questionKey.label',
   'enroll-authenticator.security_question.sub_schema_local_credentials.1': 'oie.security.question.createQuestion.label',
   'enroll-authenticator.security_question.credentials.answer': 'mfa.challenge.answer.placeholder',
   'enroll-authenticator.security_question.credentials.question': 'oie.security.question.createQuestion.label',
   'enroll-authenticator.security_question.credentials.questionKey': 'oie.security.question.questionKey.label',
-  'enroll-authenticator.google_otp.credentials.passcode': 'oie.google_authenticator.otp.title',
+  'enroll-authenticator.google_otp.credentials.passcode': 'oie.google_authenticator.otp.enterCodeText',
   'enroll-authenticator.onprem_mfa.credentials.clientData': 'enroll.onprem.username.placeholder',
   'enroll-authenticator.onprem_mfa.credentials.passcode': 'enroll.onprem.passcode.placeholder',
   'enroll-authenticator.rsa_token.credentials.clientData': 'enroll.onprem.username.placeholder',
@@ -103,6 +116,9 @@ const I18N_OVERRIDE_MAPPINGS = {
   'enroll-authenticator.symantec_vip.credentials.credentialId': 'enroll.symantecVip.credentialId.placeholder',
   'enroll-authenticator.symantec_vip.credentials.passcode': 'enroll.symantecVip.passcode1.placeholder',
   'enroll-authenticator.symantec_vip.credentials.nextPasscode': 'enroll.symantecVip.passcode2.placeholder',
+  'enroll-authenticator.yubikey_token.credentials.passcode': 'oie.yubikey.passcode.label',
+
+  'enrollment-channel-data.email': 'oie.enroll.okta_verify.channel.email.label',
 
   'select-enrollment-channel.authenticator.channel.qrcode': 'oie.enroll.okta_verify.select.channel.qrcode.label',
   'select-enrollment-channel.authenticator.channel.email': 'oie.enroll.okta_verify.select.channel.email.label',
@@ -118,12 +134,36 @@ const I18N_OVERRIDE_MAPPINGS = {
   'challenge-authenticator.rsa_token.credentials.passcode': 'mfa.challenge.enterCode.placeholder',
   'challenge-authenticator.custom_otp.credentials.passcode': 'oie.custom_otp.verify.passcode.label',
   'challenge-authenticator.symantec_vip.credentials.passcode': 'oie.symantecVip.verify.passcode.label',
+  'challenge-authenticator.yubikey_token.credentials.passcode': 'oie.yubikey.passcode.label',
+  'challenge-authenticator.credentials.passcode': 'oie.password.label',
+
+  'reset-authenticator.okta_password.credentials.passcode': 'oie.password.newPasswordLabel',
+  'reenroll-authenticator.okta_password.credentials.passcode': 'oie.password.newPasswordLabel',
+  'reenroll-authenticator-warning.okta_password.credentials.passcode': 'oie.password.newPasswordLabel',
+  'incorrectPassword': 'oie.password.incorrect.message',
 
   'enroll-profile.userProfile.lastName': 'oie.user.profile.lastname',
   'enroll-profile.userProfile.firstName': 'oie.user.profile.firstname',
   'enroll-profile.userProfile.email': 'oie.user.profile.primary.email',
+  'profile-update.userProfile.secondEmail': 'oie.user.profile.secondary.email',
 
-  'oie.session.expired' : 'oie.idx.session.expired',
+  'user-code.userCode': 'device.code.activate.label',
+
+  // Remap authn API errors to OIE
+  'api.authn.poll.error.push_rejected': 'oktaverify.rejected',
+
+  // Remap duo API errors to OIE
+  'oie.authenticator.duo.method.duo.verification_timeout': 'oie.authenticator.duo.error',
+  'oie.authenticator.duo.method.duo.verification_failed': 'oie.authenticator.duo.error',
+
+  'idx.email.verification.required': 'registration.complete.confirm.text',
+  'tooManyRequests': 'oie.tooManyRequests',
+  'api.users.auth.error.POST_PASSWORD_UPDATE_AUTH_FAILURE': 'oie.post.password.update.auth.failure.error',
+  'security.access_denied': 'errors.E0000006',
+  'E0000009': 'errors.E0000009',
+  'api.factors.error.sms.invalid_phone': 'oie.phone.invalid',
+  'app.ldap.password.reset.failed': 'errors.E0000017',
+  'oie.selfservice.unlock_user.challenge.failed.permissions': 'errors.E0000006',
 };
 
 const I18N_PARAMS_MAPPING = {
@@ -135,6 +175,65 @@ const I18N_PARAMS_MAPPING = {
       getParam: getAuthenticatorDisplayName,
     },
   },
+};
+
+/**
+ * For i18n keys that require string interpolation using values from "params".
+ * {baseKey} : {params}
+ */
+const I18N_OVERRIDE_WITH_PARAMS_MAP = {
+  'registration.error.invalidLoginEmail': {
+    Email: 'Email',
+  },
+  'registration.error.doesNotMatchPattern': {
+    Email: 'Email',
+  },
+  'registration.error.notUniqueWithinOrg': {
+    Email: 'Email',
+  },
+};
+
+/**
+ * For messages that need to be interpolated with param values.
+ *
+ * Enumerate each possible param interpolation and hardcode that into properties file.
+ * This is to ensure proper translation.
+ *
+ * Example - a known param:
+ *
+ * input =
+ *  "i18n": {
+      "key": "registration.error.doesNotMatchPattern",
+      "params": [
+        "Email"
+      ]
+    }
+ * output = registration.error.doesNotMatchPattern.Email
+ *
+ * Example - an unknown param:
+ *
+ * input =
+ *  "i18n": {
+      "key": "registration.error.doesNotMatchPattern",
+      "params": [
+        "Custom Property"
+      ]
+    }
+ * output = registration.error.doesNotMatchPattern.custom
+ *
+ * @param {String} key
+ * @param {String} param
+ * @returns {String}
+ */
+const getI8nKeyUsingParams = (key, param) => {
+  let i18nKey = key;
+
+  if (I18N_OVERRIDE_WITH_PARAMS_MAP[i18nKey][param]) {
+    i18nKey += `.${param}`;
+  } else {
+    i18nKey += '.custom';
+  }
+  return i18nKey;
 };
 
 const getI18NParams = (remediation, authenticatorKey) => {
@@ -151,7 +250,6 @@ const getI18NParams = (remediation, authenticatorKey) => {
 
 const getI18nKey = (i18nPath) => {
   let i18nKey;
-
   // Extract security question value from i18nPath
   SECURITY_QUESTION_PREFIXES.forEach(prefix => {
     if (i18nPath.indexOf(prefix) === 0 ) {
@@ -172,6 +270,10 @@ const getI18nKey = (i18nPath) => {
   return i18nKey;
 };
 
+const doesI18NKeyExist = (i18nKey) => {
+  return !!Bundles.login[i18nKey];
+};
+
 /**
  * Find i18n value using {@code i18nPath} if it exists.
  * Otherwise return {@code defaultValue}.
@@ -182,6 +284,9 @@ const getI18nKey = (i18nPath) => {
  */
 const getI18NValue = (i18nPath, defaultValue, params = []) => {
   const i18nKey = getI18nKey(i18nPath);
+  // TODO : OKTA-397225
+  // here defaultValue is uiSchema label or placeholders, some lables may be customized by 
+  // admin to anything string. We should not localize and replace these customized labels even if i18nkey exists
   if (i18nKey) {
     return loc(i18nKey, 'login', params);
   } else {
@@ -256,6 +361,8 @@ const updateLabelForUiSchema = (remediation, uiSchema) => {
 
 };
 
+const isWebAuthnAPIError = ( i18nKey ) => i18nKey.startsWith(WEBAUTHN_API_GENERIC_ERROR_KEY);
+
 /**
  * @typedef {Object} Message
  * @property {string} message
@@ -264,23 +371,64 @@ const updateLabelForUiSchema = (remediation, uiSchema) => {
  * @property {string[]} i18n.params
  */
 /**
- * - iff `message.i18n.key` exists and has value in 'login.properties', return the value.
- * - otherwise returns `message.message`
+ * - If `message.i18n.key` exists and has a value in 'login.properties'
+ *   through the given key or via I18N_OVERRIDE_MAPPINGS, return the value.
+ *
+ * - returns `message.message` otherwise
  *
  * @param {Message} message
  */
 const getMessage = (message) => {
   if (message.i18n?.key) {
-    const i18nKey = message.i18n.key;
+    let i18nKey = message.i18n.key;
+    let i18nParams = message.i18n.params || [];
+
+    // TODO - remove this block once API fix is done - OKTA-398080
+    // Sometimes API sends params: [""] an array with empty string.
+    // example - error-authenticator-enroll-password-common mock
+    if (i18nParams.length === 1 && i18nParams[0] === '') {
+      i18nParams = [];
+    }
+
+    if (I18N_OVERRIDE_MAPPINGS[message.i18n?.key]) {
+      i18nKey = I18N_OVERRIDE_MAPPINGS[message.i18n?.key];
+    } else if (I18N_OVERRIDE_WITH_PARAMS_MAP[i18nKey]) {
+      const param = message.i18n.params?.[0];
+      i18nKey = getI8nKeyUsingParams(i18nKey, param);
+      i18nParams = i18nKey.endsWith('custom') ? [param] : [];
+    }
+
     if (Bundles.login[i18nKey]) {
       Logger.info(`Override messages using i18n key ${i18nKey}`);
       // expect user config i18n properly.
       // e.g. the i18n value shall have placeholders like `{0}`, when params is not empty.
-      return loc(i18nKey, 'login', message.i18n.params || []);
+      return loc(i18nKey, 'login', i18nParams);
+    }
+
+    if (isWebAuthnAPIError(i18nKey)) {
+      // The WebAuthn api error doesn't make much sense to a typical end user, but useful for developer.
+      // So keep the api message in response, but show a generic error message on UI.
+      return loc(WEBAUTHN_API_GENERIC_ERROR_KEY, 'login');
     }
   }
+
   Logger.warn(`Avoid rendering unlocalized text sent from the API: ${message.message}`);
   return message.message;
+};
+
+/**
+ * @param {Object} error
+ */
+const getMessageFromBrowserError = (error) => {
+  if (error.name) {
+    const key = `oie.browser.error.${error.name}`;
+    if (Bundles.login[key]) {
+      Logger.info(`Override messages using i18n key ${key}`);
+      // expect user config i18n properly.
+      return loc(key, 'login');
+    }
+  }
+  return error.message;
 };
 
 /**
@@ -328,4 +476,12 @@ const isCustomizedI18nKey = (i18nKey, settings) => {
   return !!customizedProperty;
 };
 
-export { uiSchemaLabelTransformer as default, getMessage, getMessageKey, getI18NParams, isCustomizedI18nKey };
+export {
+  uiSchemaLabelTransformer as default,
+  getMessage,
+  getMessageKey,
+  getI18NParams,
+  doesI18NKeyExist,
+  isCustomizedI18nKey,
+  getMessageFromBrowserError
+};

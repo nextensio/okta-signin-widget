@@ -52,10 +52,10 @@ async function setup(t) {
 
 test.requestHooks(mockEnrollAuthenticatorPassword)('should load select authenticator list', async t => {
   const selectFactorPage = await setup(t);
-  await t.expect(selectFactorPage.getFormTitle()).eql('Set up Authenticators');
+  await t.expect(selectFactorPage.getFormTitle()).eql('Set up security methods');
   await t.expect(selectFactorPage.getFormSubtitle()).eql(
-    'Set up authenticators to ensure that only you have access to your account.');
-  await t.expect(selectFactorPage.getFactorsCount()).eql(12);
+    'Security methods help protect your account by ensuring only you have access.');
+  await t.expect(selectFactorPage.getFactorsCount()).eql(13);
 
   await t.expect(selectFactorPage.getFactorLabelByIndex(0)).eql('Password');
   await t.expect(selectFactorPage.getFactorIconClassByIndex(0)).contains('mfa-okta-password');
@@ -86,13 +86,14 @@ test.requestHooks(mockEnrollAuthenticatorPassword)('should load select authentic
   await t.expect(selectFactorPage.getFactorSelectButtonByIndex(4)).eql('Set up');
   await t.expect(selectFactorPage.getFactorSelectButtonDataSeByIndex(4)).eql('okta_verify');
   await t.expect(selectFactorPage.getFactorDescriptionByIndex(4))
-    .eql('Okta Verify is an authenticator app, installed on your phone or computer, used to prove your identity');
+    .eql('Okta Verify is an authenticator app, installed on your phone, used to prove your identity');
 
   await t.expect(selectFactorPage.getFactorLabelByIndex(5)).eql('Google Authenticator');
   await t.expect(selectFactorPage.getFactorIconClassByIndex(5)).contains('mfa-google-auth');
   await t.expect(selectFactorPage.getFactorSelectButtonByIndex(5)).eql('Set up');
   await t.expect(selectFactorPage.getFactorSelectButtonDataSeByIndex(5)).eql('google_otp');
-  await t.expect(await selectFactorPage.factorDescriptionExistsByIndex(5)).eql(false);
+  await t.expect(selectFactorPage.getFactorDescriptionByIndex(5))
+    .eql('Enter a temporary code generated from the Google Authenticator app.');
 
   await t.expect(selectFactorPage.getFactorLabelByIndex(6)).eql('Atko Custom On-prem');
   await t.expect(selectFactorPage.getFactorIconClassByIndex(6)).contains('mfa-onprem');
@@ -133,12 +134,18 @@ test.requestHooks(mockEnrollAuthenticatorPassword)('should load select authentic
   await t.expect(selectFactorPage.getFactorSelectButtonDataSeByIndex(11)).eql('symantec_vip');
   await t.expect(selectFactorPage.getFactorDescriptionByIndex(11)).eql('Verify by entering a temporary code from the Symantec VIP app.');
 
+  await t.expect(selectFactorPage.getFactorLabelByIndex(12)).eql('YubiKey Authenticator');
+  await t.expect(selectFactorPage.getFactorIconClassByIndex(12)).contains('mfa-yubikey');
+  await t.expect(selectFactorPage.getFactorSelectButtonByIndex(12)).eql('Set up');
+  await t.expect(selectFactorPage.getFactorSelectButtonDataSeByIndex(12)).eql('yubikey_token');
+  await t.expect(selectFactorPage.getFactorDescriptionByIndex(12)).eql('Verify your identity using YubiKey');
+
   await t.expect(await selectFactorPage.signoutLinkExists()).ok();
 });
 
 test.requestHooks(mockEnrollAuthenticatorPassword)('should navigate to password enrollment page', async t => {
   const selectFactorPage = await setup(t);
-  await t.expect(selectFactorPage.getFormTitle()).eql('Set up Authenticators');
+  await t.expect(selectFactorPage.getFormTitle()).eql('Set up security methods');
 
   selectFactorPage.selectFactorByIndex(0);
   const enrollPasswordPage = new FactorEnrollPasswordPageObject(t);
@@ -148,14 +155,14 @@ test.requestHooks(mockEnrollAuthenticatorPassword)('should navigate to password 
 
 test.requestHooks(requestLogger, mockEnrollAuthenticatorPassword)('select password challenge page and hit switch authenticator and re-select password', async t => {
   const selectFactorPage = await setup(t);
-  await t.expect(selectFactorPage.getFormTitle()).eql('Set up Authenticators');
+  await t.expect(selectFactorPage.getFormTitle()).eql('Set up security methods');
 
   selectFactorPage.selectFactorByIndex(0);
   const enrollPasswordPage = new FactorEnrollPasswordPageObject(t);
   await t.expect(enrollPasswordPage.passwordFieldExists()).eql(true);
   await t.expect(enrollPasswordPage.confirmPasswordFieldExists()).eql(true);
   await enrollPasswordPage.clickSwitchAuthenticatorButton();
-  await t.expect(selectFactorPage.getFormTitle()).eql('Set up Authenticators');
+  await t.expect(selectFactorPage.getFormTitle()).eql('Set up security methods');
   // re-select password
   selectFactorPage.selectFactorByIndex(0);
   await t.expect(enrollPasswordPage.passwordFieldExists()).eql(true);
@@ -178,7 +185,7 @@ test.requestHooks(requestLogger, mockEnrollAuthenticatorPassword)('select passwo
 
 test.requestHooks(mockOptionalAuthenticatorEnrollment)('should skip optional enrollment and go to success', async t => {
   const selectFactorPage = await setup(t);
-  await t.expect(selectFactorPage.getFormTitle()).eql('Set up Authenticators');
+  await t.expect(selectFactorPage.getFormTitle()).eql('Set up security methods');
 
   selectFactorPage.skipOptionalEnrollment();
   const successPage = new SuccessPageObject(t);

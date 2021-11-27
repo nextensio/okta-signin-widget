@@ -1,8 +1,6 @@
 .sign-in-with-device-option {
   .okta-verify-container {
-    .okta-verify-authenticator {
-      margin: 0 0.83em 0 0;
-    }
+    text-align: center;
   }
 }
 
@@ -15,6 +13,16 @@
   }
 }
 
+.sign-in-with-idp {
+  .okta-idps-container {
+    .social-auth-button.link-button {
+      &:last-of-type {
+        margin-bottom: 0;
+      }
+    }
+  }
+}
+
 .sign-in-with-device-option,
 .sign-in-with-idp,
 .custom-buttons {
@@ -23,17 +31,14 @@
       margin-bottom: 0.83em;
     }
     .button {
-      display: flex;
+      display: block;
       position: relative;
       min-height: 50px;
       height: auto;
-      padding-top: 10px;
+      padding-top: 15px;
       padding-bottom: 10px;
       line-height: 1.4;
       align-items: center;
-      .okta-verify-authenticator {
-        flex-shrink: 0;
-      }
     }
   }
   .separation-line {
@@ -65,6 +70,23 @@
       padding: 0 15px;
       font-size: 13px;
       color: $border-color-default;
+    }
+  }
+}
+
+.o-form-button-bar {
+  .links-primary {
+    font-size: $font-size-small;
+    margin-top: 1.9em;
+    margin-bottom: -1em;
+    max-width: 100%;
+    width: fit-content;
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+    .link {
+      padding: 0.3rem 0;
+      word-wrap: break-word;
     }
   }
 }

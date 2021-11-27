@@ -1,5 +1,5 @@
 import { _ } from 'okta';
-import createAuthClient from 'widget/createAuthClient';
+import getAuthClient from 'widget/getAuthClient';
 import Router from 'LoginRouter';
 import PollingForm from 'helpers/dom/PollingForm';
 import Util from 'helpers/mocks/Util';
@@ -14,7 +14,9 @@ function setup(settings, res) {
   const successSpy = jasmine.createSpy('successSpy');
   const setNextResponse = Util.mockAjax();
   const baseUrl = window.location.origin;
-  const authClient = createAuthClient({ issuer: baseUrl });
+  const authClient = getAuthClient({
+    authParams: { issuer: baseUrl }
+  });
   const router = new Router(
     _.extend(
       {
@@ -57,7 +59,7 @@ Expect.describe('Polling', function() {
     it('has the cancel button', function(done) {
       return setup()
         .then(function(test) {
-          expect(test.form.cancelButton()).toHaveLength(1);
+          expect(test.form.cancelButton().length).toEqual(1);
           expect(test.form.cancelButton().attr('value')).toBe('Cancel');
           expect(test.form.cancelButton().attr('class')).toBe('button button-primary');
           done();

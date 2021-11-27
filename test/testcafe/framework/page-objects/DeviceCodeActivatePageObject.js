@@ -1,4 +1,5 @@
 import BasePageObject from './BasePageObject';
+import {Selector} from 'testcafe';
 
 const USER_CODE_FIELD = 'userCode';
 
@@ -39,6 +40,14 @@ export default class DeviceCodeActivatePageObject extends BasePageObject {
     return this.form.setTextBoxValue(USER_CODE_FIELD, value);
   }
 
+  getActivateCodeTextBoxValue() {
+    return this.form.getTextBoxValue(USER_CODE_FIELD);
+  }
+
+  isIdentifierFieldVisible() {
+    return this.form.findFormFieldInput('identifier').visible;
+  }
+
   fillIdentifierField(value) {
     return this.form.setTextBoxValue('identifier', value);
   }
@@ -49,5 +58,21 @@ export default class DeviceCodeActivatePageObject extends BasePageObject {
 
   getTerminalContent(){
     return this.form.getTerminalContent();
+  }
+
+  isTerminalSuccessIconPresent() {
+    return this.form.getElement('.device-code-terminal--icon.success-24-green').exists;
+  }
+
+  isTerminalErrorIconPresent() {
+    return this.form.getElement('.device-code-terminal--icon.error-24-red').exists;
+  }
+
+  isBeaconTerminalPresent() {
+    return this.beacon.find('[data-se="factor-beacon"]').exists;
+  }
+
+  isTryAgainButtonPresent() {
+    return Selector('[data-se="try-again"]').exists;
   }
 }

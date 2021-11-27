@@ -9,6 +9,7 @@ $od-secondary-button-action-text-color: #124a94;
 /* ======= Buttons ======= */
 
 .button,
+// link-button is a link that looks like a button
 .button.link-button {
   display: inline-block;
   height: $input-height;
@@ -19,6 +20,19 @@ $od-secondary-button-action-text-color: #124a94;
   font-size: $font-size;
   box-sizing: border-box;
   -webkit-appearance: none;
+}
+
+// button-link is a link that looks like a button
+.button-link {
+  color: $link-text-color;
+  background: none;
+  border: none;
+  cursor: pointer;
+
+  &:hover,
+  &:focus {
+    text-decoration: underline;
+  }
 }
 
 .button-wide,
@@ -88,7 +102,11 @@ $od-secondary-button-action-text-color: #124a94;
   line-height: 50px;
   margin-top: 15px;
   padding-left: 90px;
+  padding-right: 40px;
   text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 
   &:last-of-type {
     margin-bottom: 25px;
@@ -102,15 +120,17 @@ $od-secondary-button-action-text-color: #124a94;
   }
 }
 
-.okta-verify-authenticator {
-  height: 20px;
-  width: 20px;
-  display: block;
-  background-repeat: no-repeat;
-  background-position: 50% 50%;
-  background-size: cover;
-  float: left;
-  margin: 15px 0;
+.button {
+  .okta-verify-authenticator {
+    height: 20px;
+    width: 20px;
+    background-repeat: no-repeat;
+    background-position: 50% 50%;
+    background-size: cover;
+    vertical-align: middle;
+    display: inline-block;
+    margin: 0 0.83em 0 0;
+  }
 }
 
 .default-custom-button.link-button {
@@ -206,6 +226,24 @@ $od-secondary-button-action-text-color: #124a94;
   }
 }
 
+@mixin social-auth-button-colorless-template($bg-image) {
+  background-color: $other-label-bg-color;
+  background: $bg-image no-repeat 12px/24px,
+    linear-gradient(90deg, $other-icon-bg-color 50px, $other-label-bg-color 50px);
+  border: 1px solid $other-border-color;
+
+  &:active,
+  &:focus,
+  &:hover {
+    background: $bg-image no-repeat 12px/24px,
+      linear-gradient(90deg, lighten($other-icon-bg-color, 3%) 50px, lighten($other-label-bg-color, 3%) 50px);
+  }
+
+  &.link-button {
+    color: $dark-text-color;
+  }
+}
+
 @mixin default-custom-button-template($background-color, $border-color) {
   background-color: $background-color;
   border: 1px solid $border-color;
@@ -254,12 +292,8 @@ $od-secondary-button-action-text-color: #124a94;
 }
 
 .social-auth-apple-button {
-  @include social-auth-button-template(
-    url('../img/icons/login/apple_logo.png'),
-    $apple-icon-bg-color,
-    $apple-label-bg-color,
-    $apple-border-color
-  );
+  @include social-auth-button-template(url('../img/icons/login/apple_logo.png'),
+  $apple-icon-bg-color, $apple-label-bg-color, $apple-border-color);
 
   background-position: 15px 50%, 0% 0%;
 
@@ -298,4 +332,64 @@ $od-secondary-button-action-text-color: #124a94;
 
 .piv-button.link-button {
   @include piv-button-template($piv-button-background-color, $piv-button-border-text-color, $piv-action-button-background-color, $piv-action-button-border-text-color);
+}
+
+.social-auth-github-button {
+  @include social-auth-button-colorless-template(url('../img/icons/login/github_logo.png'));
+}
+
+.social-auth-gitlab-button {
+  @include social-auth-button-colorless-template(url('../img/icons/login/gitlab_logo.png'));
+}
+
+.social-auth-yahoo-button {
+  @include social-auth-button-colorless-template(url('../img/icons/login/yahoo_logo.png'));
+}
+
+.social-auth-line-button {
+  @include social-auth-button-colorless-template(url('../img/icons/login/line_logo.png'));
+}
+
+.social-auth-paypal-button {
+  @include social-auth-button-colorless-template(url('../img/icons/login/paypal_logo.png'));
+}
+
+.social-auth-paypal_sandbox-button {
+  @include social-auth-button-colorless-template(url('../img/icons/login/paypal_sandbox_logo.png'));
+}
+
+.social-auth-salesforce-button {
+  @include social-auth-button-colorless-template(url('../img/icons/login/salesforce_logo.png'));
+}
+
+.social-auth-amazon-button {
+  @include social-auth-button-colorless-template(url('../img/icons/login/amazon_logo.png'));
+}
+
+.social-auth-yahoojp-button {
+  @include social-auth-button-colorless-template(url('../img/icons/login/yahoojp_logo.png'));
+}
+
+.social-auth-discord-button {
+  @include social-auth-button-colorless-template(url('../img/icons/login/discord_logo.png'));
+}
+
+.social-auth-adobe-button {
+  @include social-auth-button-colorless-template(url('../img/icons/login/adobe_logo.png'));
+}
+
+.social-auth-orcid-button {
+  @include social-auth-button-colorless-template(url('../img/icons/login/orcid_logo.png'));
+}
+
+.social-auth-spotify-button {
+  @include social-auth-button-colorless-template(url('../img/icons/login/spotify_logo.png'));
+}
+
+.social-auth-xero-button {
+  @include social-auth-button-colorless-template(url('../img/icons/login/xero_logo.png'));
+}
+
+.social-auth-quickbooks-button {
+  @include social-auth-button-colorless-template(url('../img/icons/login/quickbooks_logo.png'));
 }

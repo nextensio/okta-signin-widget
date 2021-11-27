@@ -11,7 +11,11 @@ const Body = BaseForm.extend({
       loc('oie.enroll.okta_verify.enroll.channel.email.title', 'login'):
       loc('oie.enroll.okta_verify.enroll.channel.sms.title', 'login');
   },
-  save: loc('oie.enroll.okta_verify.setupLink', 'login'),
+
+  save() {
+    return loc('oie.enroll.okta_verify.setupLink', 'login');
+  },
+
   getUISchema() {
     const uiSchemas = BaseForm.prototype.getUISchema.apply(this, arguments);
     const phoneNumberUISchema = _.find(uiSchemas, ({ name }) => name === 'phoneNumber');
@@ -36,8 +40,9 @@ const Body = BaseForm.extend({
       input: [
         {
           type: 'label',
+          /* eslint-disable-next-line @okta/okta/no-unlocalized-text */
           label: `+${this.model.get('phoneCode')}`,
-          className: 'country-code-label',
+          className: 'country-code-label no-translate',
         },
         Object.assign({}, phoneNumberUISchema),
       ],

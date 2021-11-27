@@ -146,8 +146,6 @@ export default Model.extend({
     lastAuthResponse: ['object', true, {}],
     transaction: 'object',
     transactionError: 'object',
-    introspectSuccess: 'object', // only set during introspection
-    introspectError: 'object', // only set during introspection
     username: 'string',
     factors: 'object',
     policy: 'object',
@@ -213,6 +211,10 @@ export default Model.extend({
     this.unset('lastFailedChallengeFactorData');
   },
 
+  getUser: function() {
+    return this.get('user');
+  },
+
   derived: {
     isSuccessResponse: {
       deps: ['lastAuthResponse'],
@@ -243,6 +245,14 @@ export default Model.extend({
       fn: function(res) {
         return res.status === 'MFA_CHALLENGE' || res.status === 'FACTOR_CHALLENGE';
       },
+    },
+    isSMSPasswordRecovery: {
+      deps: ['lastAuthResponse'],
+      fn: function({ status, factorType, recoveryType }) {
+        return status === 'RECOVERY_CHALLENGE' &&
+          factorType?.toLowerCase() === 'sms' &&
+          recoveryType?.toLowerCase() === 'password';
+      }
     },
     isUnauthenticated: {
       deps: ['lastAuthResponse'],
@@ -742,11 +752,26 @@ export default Model.extend({
         return null;
       },
     },
+    deviceActivationStatus: {
+      deps: ['lastAuthResponse'],
+      fn: function(res) {
+        if (!res._embedded) {
+          return null;
+        }
+        return res._embedded.deviceActivationStatus;
+      },
+    },
+    usingDeviceFlow: {
+      deps: ['lastAuthResponse'],
+      fn: function(res) {
+        return !!(res._embedded && res._embedded.usingDeviceFlow);
+      },
+    },
   },
 
   parse: function(options) {
     this.settings = options.settings;
-    return _.extend(_.omit(options, 'settings'), { 
+    return _.extend(_.omit(options, 'settings'), {
       languageCode: this.settings.get('languageCode'),
       userCountryCode: this.settings.get('countryCode'),
     });

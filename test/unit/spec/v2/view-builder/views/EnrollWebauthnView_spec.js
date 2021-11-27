@@ -27,7 +27,12 @@ describe('v2/view-builder/views/webauthn/EnrollWebauthnView', function() {
         currentAuthenticator,
         authenticatorEnrollments,
       });
-      spyOn(appState, 'hasRemediationObject').and.callFake(formName => formName === 'select-authenticator-enroll');
+      spyOn(appState, 'getRemediationAuthenticationOptions').and.callFake(formName => {
+        if (formName === 'select-authenticator-enroll') {
+          return [ { label: 'some authenticator '} ];
+        }
+        return [];
+      });
       spyOn(appState, 'shouldShowSignOutLinkInCurrentForm').and.returnValue(false);
       const settings = new Settings({ baseUrl: 'http://localhost:3000' });
       testContext.view = new EnrollWebauthnView({
@@ -48,7 +53,7 @@ describe('v2/view-builder/views/webauthn/EnrollWebauthnView', function() {
     spyOn(webauthn, 'isNewApiAvailable').and.callFake(() => true);
     testContext.init();
     expect(testContext.view.$('.idx-webauthn-enroll-text').text()).toBe(
-      'Your browser will prompt to register a security key or biometric authenticator (Windows Hello, Touch ID, etc.). Follow the instructions to complete enrollment.'
+      'You will be prompted to register a security key or biometric authenticator (Windows Hello, Touch ID, Face ID, etc.). Follow the instructions to complete set up.'
     );
     expect(testContext.view.$('.webauthn-setup').css('display')).not.toBe('none'); // default value: empty string in jest, 'inline' in browser
     expect(testContext.view.$('.webauthn-setup').text()).toBe('Set up');
@@ -177,7 +182,7 @@ describe('v2/view-builder/views/webauthn/EnrollWebauthnView', function() {
       .catch(done.fail);
   });
 
-  it('error is displayed when credentials.create fails', function(done) {
+  it('error with a name that not supported on login bundle is displayed when credentials.create fails', function(done) {
     spyOn(webauthn, 'isNewApiAvailable').and.callFake(() => true);
     spyOn(navigator.credentials, 'create').and.returnValue(Promise.reject({ message: 'error from browser' }));
 
@@ -187,6 +192,25 @@ describe('v2/view-builder/views/webauthn/EnrollWebauthnView', function() {
     Expect.waitForCss('.infobox-error')
       .then(() => {
         expect(testContext.view.$('.infobox-error')[0].textContent.trim()).toBe('error from browser');
+        expect(testContext.view.form.webauthnAbortController).toBe(null);
+        done();
+      })
+      .catch(done.fail);
+  });
+
+  it('error with a name that supported on login bundle is displayed when credentials.create fails', function(done) {
+    spyOn(webauthn, 'isNewApiAvailable').and.callFake(() => true);
+    spyOn(navigator.credentials, 'create').and.returnValue(Promise.reject({
+      message: 'error from browser',
+      name: 'NotAllowedError',
+    }));
+
+    testContext.init();
+    testContext.view.$('.webauthn-setup').click();
+
+    Expect.waitForCss('.infobox-error')
+      .then(() => {
+        expect(testContext.view.$('.infobox-error')[0].textContent.trim()).toBe('The operation either timed out or was not allowed.');
         expect(testContext.view.form.webauthnAbortController).toBe(null);
         done();
       })

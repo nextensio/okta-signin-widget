@@ -34,7 +34,6 @@ export default Model.extend({
     baseUrl: ['string', true],
     recoveryToken: ['string', false, undefined],
     stateToken: ['string', false, undefined],
-    interactionHandle: ['string', false, undefined],
     username: ['string', false],
     signOutLink: ['string', false],
     relayState: ['string', false],
@@ -45,12 +44,6 @@ export default Model.extend({
       value: 'auto',
     },
 
-    mode: {
-      type: 'string',
-      values: ['remediation', 'relying-party'],
-      value: 'relying-party',
-    },
-
     // Function to transform the username before passing it to the API
     // for Primary Auth, Forgot Password and Unlock Account.
     transformUsername: ['function', false],
@@ -59,6 +52,7 @@ export default Model.extend({
     globalSuccessFn: 'function',
     globalErrorFn: 'function',
     processCreds: 'function',
+    hooks: 'object',
 
     // IMAGES
     logo: 'string',
@@ -68,9 +62,17 @@ export default Model.extend({
     // IDX API VERSION
     apiVersion: ['string', true, '1.0.0'],
 
+    // <OIE>
     // attribute to hold proxy (fake) idx response
     // to render static pages without initiating idx pipeline
     proxyIdxResponse: ['object', false],
+
+    // <OIE>
+    // By default, state handle will be saved to session storage
+    // and will be clear when terminal error or success redirect.
+    // Set this flag to true if you want to override this behavior.
+    // a.k.a dishonor the state handle stored in session storage.
+    overrideExistingStateToken: ['boolean', false, false],
 
     // FEATURES
     'features.router': ['boolean', true, false],
@@ -85,6 +87,7 @@ export default Model.extend({
     'features.multiOptionalFactorEnroll': ['boolean', true, false],
     'features.deviceFingerprinting': ['boolean', false, false],
     'features.hideSignOutLinkInMFA': ['boolean', false, false],
+    'features.skipIdpFactorVerificationBtn': ['boolean', false, false],
     'features.hideBackToSignInForReset': ['boolean', false, false],
     'features.customExpiredPassword': ['boolean', true, false],
     'features.registration': ['boolean', false, false],
@@ -96,8 +99,10 @@ export default Model.extend({
     'features.useDeviceFingerprintForSecurityImage': ['boolean', false, true],
     'features.showPasswordRequirementsAsHtmlList': ['boolean', false, false],
     'features.mfaOnlyFlow': ['boolean', false, false],
-
-    defaultCountryCode: ['string', false ,'US'],
+    'features.scrollOnError': ['boolean', false, true],
+    'features.showKeepMeSignedIn': ['boolean', false, true],
+    
+    defaultCountryCode: ['string', false, 'US'],
 
     // I18N
     language: ['any', false], // Can be a string or a function
@@ -116,7 +121,7 @@ export default Model.extend({
     state: 'string',
     scopes: 'array',
     codeChallenge: 'string',
-    codeChallengeMethod: 'string',
+    codeChallengeMethod: ['string', false],
     oAuthTimeout: ['number', false],
 
     authScheme: ['string', false, 'OAUTH2'],
@@ -161,6 +166,9 @@ export default Model.extend({
 
     //PIV
     piv: ['object', false, {}],
+
+    //Email verify callback
+    stateTokenExternalId: 'string'
   },
 
   derived: {
@@ -169,7 +177,10 @@ export default Model.extend({
       fn: function() {
         // showPasswordToggle is for OIE only.
         // Used to default showPasswordToggleOnSignInPage to true.
-        return this.options?.features?.showPasswordToggleOnSignInPage !== false;
+        const defaultValue = true;
+        const customizedValue = this.options?.features?.showPasswordToggleOnSignInPage ??
+          this.options?.['features.showPasswordToggleOnSignInPage'];
+        return customizedValue ?? defaultValue;
       },
       cache: true,
     },
@@ -181,10 +192,14 @@ export default Model.extend({
       cache: true,
     },
     supportedLanguages: {
-      deps: ['i18n'],
-      fn: function(i18n) {
+      deps: ['i18n', 'language'],
+      fn: function(i18n, language) {
         // Developers can pass in their own languages
-        return _.union(config.supportedLanguages, _.keys(i18n));
+        return _.union(
+          config.supportedLanguages, 
+          _.keys(i18n), 
+          _.isString(language) ? [language] : []
+        );
       },
       cache: true,
     },
@@ -234,6 +249,15 @@ export default Model.extend({
         return Object.keys(countries).includes(defaultCountryCode)
           ? defaultCountryCode : 'US';
       },
+    },
+    mode: {
+      deps: ['useInteractionCodeFlow', 'codeChallenge'],
+      fn: function(useInteractionCodeFlow, codeChallenge) {
+        if (useInteractionCodeFlow && codeChallenge) {
+          return 'remediation';
+        }
+        return 'relying-party';
+      }
     },
     oauth2Enabled: {
       deps: ['clientId', 'authScheme'],
@@ -515,4 +539,5 @@ export default Model.extend({
   isDsTheme: function() {
     return false;
   },
+
 });

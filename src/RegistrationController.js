@@ -99,6 +99,7 @@ export default BaseLoginController.extend({
     Backbone.Model.prototype.save
       .call(this.model)
       .then(function() {
+        self.model.trigger('startSaving');
         const activationToken = self.model.get('activationToken');
         const postSubmitData = activationToken ? activationToken : self.model.get('email');
 
@@ -112,16 +113,54 @@ export default BaseLoginController.extend({
           }
         );
       })
-      .fail(function(err) {
+      .fail((err) => {
         const responseJSON = err.responseJSON;
 
         if (responseJSON && responseJSON.errorCauses.length) {
-          const errMsg = responseJSON.errorCauses[0].errorSummary;
+          const { errorCode, errorCauses } = responseJSON;
+          const { errorSummary, reason, location } = errorCauses[0];
 
-          Util.triggerAfterError(self, new Errors.RegistrationError(errMsg));
+          const isNotUniqueValue =
+            errorCode === 'E0000001' &&
+            reason === 'UNIQUE_CONSTRAINT';
+
+          if (isNotUniqueValue) {
+            this.renderIsNotUniqueError(responseJSON);
+          }
+
+          this.renderLegacyLocationErrorIfNeeded(location, errorSummary);
+
+          Util.triggerAfterError(
+            this,
+            new Errors.RegistrationError(errorSummary)
+          );
         }
       });
   },
+
+  renderIsNotUniqueError: function(error) {
+    const { location } = error.errorCauses[0];
+    const errorSummary = loc(
+      'registration.error.userName.notUniqueWithinOrg',
+      'login',
+      [location]
+    );
+    // replace generic error message with more specific one
+    // without using backbone events because there was a race condition
+    // between clearing and triggering errors
+    this.$el.find('.okta-form-infobox-error p').text(errorSummary);
+  },
+
+  renderLegacyLocationErrorIfNeeded: function(location, errorSummary) {
+    // replace generic error message with errorSummary for v1 SIW
+    // this makes sure that with legacy location that starts with `data.userProfile`
+    // we still see the errorSummary in the error banner instead of only a generic error
+    // See example in https://developer.okta.com/docs/reference/registration-hook/#sample-json-payload-of-request
+    if (location && /^data\.userProfile.*/.test(location)) {
+      this.$el.find('.okta-form-infobox-error p').text(errorSummary);
+    }
+  },
+
   createRegistrationModel: function(modelProperties) {
     const self = this;
     const RegistrationControllerModel = Model.extend({
@@ -199,6 +238,11 @@ export default BaseLoginController.extend({
         title: loc('registration.form.title', 'login'),
         save: loc('registration.form.submit', 'login'),
         modelEvents : { 'invalid' : 'modifyErrors' },
+        hasSavingState: true,
+        customSavingState: {
+          start: 'startSaving',
+          stop: 'stopSaving',
+        },
         modifyErrors: function(model, errorResp) {
           // overwrite courage errorResp object to show custom error message
           for (let formFieldName in errorResp) {
@@ -212,19 +256,6 @@ export default BaseLoginController.extend({
               );
             }
           }
-        },
-        parseErrorMessage: function(resp) {
-          const hasErrorCauses = resp.errorCauses && resp.errorCauses.length;
-
-          if (hasErrorCauses) {
-            const isDuplicateEmailCause = resp.errorCode === 'E0000001'
-              && resp.errorCauses[0].reason === 'UNIQUE_CONSTRAINT';
-
-            if (isDuplicateEmailCause) {
-              resp.errorCauses[0].errorSummary = loc('registration.error.userName.notUniqueWithinOrg', 'login');
-            }
-          }
-          return resp;
         },
       });
       const form = new RegistrationControllerForm(self.toJSON());

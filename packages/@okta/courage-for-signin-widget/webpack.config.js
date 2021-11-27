@@ -117,7 +117,6 @@ const webpackConfig = {
         to: `${I18N_DIR}/dist/properties/`,
       }
     ]),
-
   ]
 
 };

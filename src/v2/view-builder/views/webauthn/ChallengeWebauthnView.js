@@ -1,10 +1,12 @@
-import { loc, createButton, createCallout } from 'okta';
+import { _, loc, createButton, createCallout } from 'okta';
 import { BaseForm } from '../../internals';
 import BaseAuthenticatorView from '../../components/BaseAuthenticatorView';
 import CryptoUtil from '../../../../util/CryptoUtil';
 import webauthn from '../../../../util/webauthn';
 import BrowserFeatures from '../../../../util/BrowserFeatures';
 import ChallengeWebauthnInfoView from './ChallengeWebauthnInfoView';
+import { getMessageFromBrowserError } from '../../../ion/i18nTransformer';
+import ChallengeWebauthnFooter from '../../components/ChallengeWebauthnFooter';
 
 const Body = BaseForm.extend({
 
@@ -66,18 +68,18 @@ const Body = BaseForm.extend({
     const allowCredentials = [];
     const authenticatorEnrollments = this.options.appState.get('authenticatorEnrollments').value || [];
     authenticatorEnrollments.forEach((enrollement) => {
-      if (enrollement.type === 'security_key') {
+      if (enrollement.key === 'webauthn') {
         allowCredentials.push({
           type: 'public-key',
           id: CryptoUtil.strToBin(enrollement.credentialId),
         });
       }
     });
-    const options = {
+    const challengeData = authenticatorData.contextualData.challengeData;
+    const options = _.extend({}, challengeData, {
       allowCredentials,
-      userVerification: authenticatorData.contextualData.challengeData.userVerification,
-      challenge: CryptoUtil.strToBin(authenticatorData.contextualData.challengeData.challenge),
-    };
+      challenge: CryptoUtil.strToBin(challengeData.challenge),
+    });
     navigator.credentials.get({
       publicKey: options,
       signal: this.webauthnAbortController.signal
@@ -94,7 +96,7 @@ const Body = BaseForm.extend({
       // Do not display if it is abort error triggered by code when switching.
       // this.webauthnAbortController would be null if abort was triggered by code.
       if (this.webauthnAbortController) {
-        this.model.trigger('error', this.model, { responseJSON: { errorSummary: error.message } });
+        this.model.trigger('error', this.model, {responseJSON: {errorSummary: getMessageFromBrowserError(error)}});
       }
     }).finally(() => {
       // unset webauthnAbortController on successful authentication or error
@@ -116,6 +118,7 @@ const Body = BaseForm.extend({
 
 export default BaseAuthenticatorView.extend({
   Body,
+  Footer: ChallengeWebauthnFooter,
   postRender() {
     BaseAuthenticatorView.prototype.postRender.apply(this, arguments);
     // Trigger browser prompt automatically for other browsers for better UX.

@@ -4,6 +4,7 @@ const SRC = path.resolve(ROOT, 'src');
 const LOCAL_PACKAGES = path.resolve(ROOT, 'packages');
 const COVERAGE_DIR = '<rootDir>/build2/reports/coverage/jest';
 const REPORT_DIR = '<rootDir>/build2/reports/unit';
+/* eslint-disable-next-line @okta/okta/no-unlocalized-text-in-templates */
 const OktaSignin = '<rootDir>/src/widget/OktaSignIn';
 const LEGACY_TESTS = require('./test/unit/legacy-tests');
 
@@ -34,10 +35,10 @@ module.exports = {
     '^nls/(.*)': '@okta/i18n/src/json/$1',
     '^okta$': `${LOCAL_PACKAGES}/@okta/courage-dist/okta.js`,
     '^okta-i18n-bundles$': 'util/Bundles',
-    '^jquery$': `${LOCAL_PACKAGES}/@okta/courage-dist/jquery.js`,
+    '^jquery$': `${LOCAL_PACKAGES}/@okta/courage-dist/jquery.js`, // jQuery from courage
     '^qtip$': '@okta/qtip2/dist/jquery.qtip.min.js',
-    '^duo$': 'duo_web_sdk/index.js',
-    '^typingdna$': 'TypingDnaRecorder-JavaScript/typingdna',
+    '^duo$': `${LOCAL_PACKAGES}/vendor/duo_web_sdk/index.js`,
+    '^typingdna$': `${LOCAL_PACKAGES}/vendor/TypingDnaRecorder-JavaScript/typingdna`,
   },
   setupFiles: [
     '<rootDir>/test/unit/jest/jest-setup-global.js'
@@ -47,6 +48,7 @@ module.exports = {
   ],
   testPathIgnorePatterns: LEGACY_TESTS,
   roots: [
+    'src',
     'test/unit/spec'
   ],
   reporters: [

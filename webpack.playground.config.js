@@ -11,9 +11,13 @@ const MOCK_SERVER_PORT = 3030;
 const WIDGET_RC_JS = '.widgetrc.js';
 const WIDGET_RC = '.widgetrc';
 
+// run `OKTA_SIW_HOST=0.0.0.0 yarn start --watch` to override the host
+const HOST = process.env.OKTA_SIW_HOST || 'localhost';
+
 if (!fs.existsSync(WIDGET_RC_JS) && fs.existsSync(WIDGET_RC)) {
   console.error('============================================');
   console.error(`Please migrate the ${WIDGET_RC} to ${WIDGET_RC_JS}.`);
+  /* eslint-disable-next-line @okta/okta/no-exclusive-language */
   console.error('For more information, please see https://github.com/okta/okta-signin-widget/blob/master/MIGRATING.md');
   console.error('============================================');
   process.exit(1);
@@ -25,7 +29,11 @@ if (!fs.existsSync(WIDGET_RC_JS)) {
 }
 
 module.exports = {
+  mode: 'development',
   target: 'web',
+  infrastructureLogging: {
+    level: 'warn',
+  },
   entry: {
     'playground.js': [`${PLAYGROUND}/main.js`]
   },
@@ -40,45 +48,43 @@ module.exports = {
         test: /\.js$/,
         exclude: /node_modules/,
         loader: 'babel-loader',
-        query: {
+        options: {
           presets: ['@babel/preset-env']
         }
       },
     ]
   },
-  watch: true,
   devServer: {
-    contentBase: [
+    host: HOST,
+    static: [
       PLAYGROUND,
       TARGET,
-      // webpack-dev-server v2 only watch contentbase on root level
-      // explicitly list folders to watch for browser auto reload
-      // sub-folders can be removed when upgrade to webpack-dev-server v3
-      path.join(TARGET, 'js'),
-      path.join(TARGET, 'css'),
+      {
+        staticOptions: {
+          watchContentBase: true
+        }
+      }
     ],
     historyApiFallback: true,
     headers: {
-      'Content-Security-Policy': `script-src http://localhost:${DEV_SERVER_PORT}`
+      'Content-Security-Policy': `script-src http://${HOST}:${DEV_SERVER_PORT}`
     },
     compress: true,
     port: DEV_SERVER_PORT,
-    open: true,
-    watchContentBase: true,
     proxy: [{
       context: [
         '/oauth2/',
         '/api/v1/',
         '/idp/idx/',
-        '/login/getimage/',
+        '/login/getimage',
         '/sso/idps/',
         '/app/UserHome',
         '/oauth2/v1/authorize',
         '/auth/services/',
       ],
-      target: `http://localhost:${MOCK_SERVER_PORT}`
+      target: `http://${HOST}:${MOCK_SERVER_PORT}`
     }],
-    before() {
+    onBeforeSetupMiddleware() {
       const script = path.resolve(
         __dirname,
         'playground',

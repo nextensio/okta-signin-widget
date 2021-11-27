@@ -1,4 +1,4 @@
-import { _, Form, loc, internal } from 'okta';
+import { _, Form, loc, internal, createCallout, View } from 'okta';
 import FormInputFactory from './FormInputFactory';
 
 const { FormUtil } = internal.views.forms.helpers;
@@ -31,6 +31,11 @@ export default Form.extend({
     //should be used before adding any other input components
     this.showMessages();
 
+    // Render CAPTCHA if one of the form fields requires us to.
+    this.listenTo(this.options.appState, 'onCaptchaLoaded', (captchaObject) => {
+      this.captchaObject = captchaObject;
+    });
+
     inputOptions.forEach(input => {
       this.addInputOrView(input);
     });
@@ -40,7 +45,9 @@ export default Form.extend({
   },
 
   handleClearFormError() {
-    if (this.$('.o-form-error-container').hasClass('o-form-has-errors')) {
+    const formErrorContainer = this.$('.o-form-error-container');
+    formErrorContainer.empty();
+    if (formErrorContainer.hasClass('o-form-has-errors')) {
       this.clearErrors();
     }
   },
@@ -52,7 +59,23 @@ export default Form.extend({
   saveForm(model) {
     //remove any existing warnings or messages before saving form
     this.$el.find('.o-form-error-container').empty();
-    this.options.appState.trigger('saveForm', model);
+
+    // Execute Captcha if enabled for this form.
+    if (this.captchaObject) {
+      this.captchaObject.execute();
+    } else {
+      this.options.appState.trigger('saveForm', model);
+    }
+  },
+
+  postRender() {
+    /**
+     * Widget would use infoContainer to display interactive messages that should be persisted during
+     * invalid form submissions. For eg resend-warning callout should not be cleared upon invalid form submit.
+     * Rerender would clear infoContainer or views classes can clear it explicitly.
+     */
+    const infoContainer= '<div class=\'o-form-info-container\'></div>';
+    this.$el.find('.o-form-error-container').before(infoContainer);
   },
 
   cancelForm() {
@@ -89,14 +112,40 @@ export default Form.extend({
     }
   },
 
-  showMessages() {
-    // render messages as text
-    const messagesObjs = this.options.appState.get('messages');
-    if (messagesObjs?.value.length) {
-      const content = messagesObjs.value.map((messagesObj) => {
-        return messagesObj.message;
+  /*
+  * Views should override this function to render custom error callouts for invalid form actions.
+  * Should return true when callout is customized
+  */
+  showCustomFormErrorCallout: null,
+
+  /*
+   * Renders the contents of messages object (if any, on error) during initialize
+   * This function is called during Form.initialize, and will display
+   * messages when the form reloads.
+   * Note: Any user action related form errors handled by FormController.showFormErrors
+   */
+  showMessages(options) {
+    const messages = this.options.appState.get('messages') || {};
+    const errContainer = '.o-form-error-container';
+    if (Array.isArray(messages.value) && !(options instanceof View)) {
+      this.add('<div class="ion-messages-container"></div>', errContainer);
+      messages.value.forEach(obj => {
+        if(!obj?.class || obj.class === 'INFO') {
+          // add message as plain text
+          this.add(`<p>${obj.message}</p>`, '.ion-messages-container');
+        } else {
+          // add error callout with custom options
+          options = Object.assign(_.pick(obj, 'message', 'class'), options);
+          this.add(createCallout({
+            content: options.message,
+            type: (options.class || '').toLowerCase(),
+            title: options.title ? options.title : ''
+          }), errContainer);
+        }
       });
-      this.add(`<div class="ion-messages-container">${content.join(' ')}</div>`, '.o-form-error-container');
+    } else if (options instanceof View) {
+      // if callee is showCustomFormErrorCallout. show custom error views
+      this.add(options, errContainer);
     }
   },
 });

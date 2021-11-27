@@ -71,19 +71,19 @@ function typeOfTransition(currentBeacon, NextBeacon, options) {
 
 export default View.extend({
   currentBeacon: null,
-
+  /* eslint-disable @okta/okta/no-unlocalized-text-in-templates */
   template: hbs(
     '\
       <div class="okta-sign-in-header auth-header">\
         {{#if logo}}\
-        <img src="{{logo}}" class="auth-org-logo" alt="{{logoText}} logo" aria-label="{{logoText}} logo">\
+        <h1><img src="{{logo}}" class="auth-org-logo" alt="{{logoText}} logo" aria-label="{{logoText}} logo"></h1>\
         {{/if}}\
         <div data-type="beacon-container" class="beacon-container"></div>\
       </div>\
       <div class="auth-content"><div class="auth-content-inner"></div></div>\
     '
   ),
-
+  /* eslint-enable @okta/okta/no-unlocalized-text-in-templates */
   // Attach a 'no-beacon' class if the security image feature
   // is not passed in to prevent the beacon from jumping.
   initialize: function(options) {

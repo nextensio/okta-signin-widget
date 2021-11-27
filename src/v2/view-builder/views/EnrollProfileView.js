@@ -4,17 +4,25 @@ import { FORMS as RemediationForms } from '../../ion/RemediationConstants';
 
 const Body = BaseForm.extend({
   title() {
+    if (this.options.appState.getCurrentViewState().href.endsWith('idp/idx/enroll/update')) {
+      return loc('oie.primaryauth.submit', 'login');
+    }
     return loc('oie.registration.form.title', 'login');
+
   },
 
   save() {
+    if (this.options.appState.getCurrentViewState().href.endsWith('idp/idx/enroll/update')) {
+      return loc('oie.registration.form.update.submit', 'login');
+    }
     return loc('oie.registration.form.submit', 'login');
+
   },
   saveForm() {
     // SIW customization hook for registration
     this.settings.preRegistrationSubmit(this.model.toJSON(),
       (postData) => {
-        this.model.attributes = {...this.model.attributes, ...postData};
+        this.model.attributes = {...this.model.attributes, ...this.model.parse(postData)};
         BaseForm.prototype.saveForm.call(this, this.model);
       },
       (error) => this.model.trigger('error', this.model, {

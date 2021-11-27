@@ -34,6 +34,13 @@ const EnrollTotpControllerAppDownloadInstructionsView = View.extend({
   initialize: function() {
     this.listenTo(this.model, 'change:__deviceType__', this.render);
   },
+  postRender: function() {
+    const link  = this.$el.find('.instructions a');
+    if (link.length) {
+      link[0].setAttribute('target', '_blank');
+      link[0].setAttribute('rel', 'noreferer noopener');
+    }
+  },
   getTemplateData: function() {
     let appStoreLink;
     let appIcon;
@@ -46,7 +53,7 @@ const EnrollTotpControllerAppDownloadInstructionsView = View.extend({
       appIcon = 'google-auth-38';
     } else {
       appStoreLink = StoreLinks.OKTA[this.model.get('__deviceType__')];
-      appIcon = 'okta-verify-38';
+      appIcon = 'okta-verify-download-icon';
     }
     return {
       appStoreLinkText: loc('enroll.totp.downloadApp', 'login', [appStoreLink, factorName, appStoreName]),
@@ -82,7 +89,6 @@ const EnrollTotpControllerEnrollTotpController = FormController.extend({
 
       return loc('enroll.totp.title', 'login', [factorName]);
     },
-    subtitle: _.partial(loc, 'enroll.totp.selectDevice', 'login'),
     autoSave: true,
     noButtonBar: true,
     attributes: { 'data-se': 'step-device-type' },
@@ -97,6 +103,8 @@ const EnrollTotpControllerEnrollTotpController = FormController.extend({
           name: '__deviceType__',
           type: 'radio',
           options: inputOptions,
+          group: true,
+          label: _.partial(loc, 'enroll.totp.selectDevice', 'login'),
         }),
         FormType.Divider({ showWhen: showWhenDeviceTypeSelected }),
         FormType.View({

@@ -10,14 +10,14 @@
  * See the License for the specific language governing permissions and limitations under the License.
  */
 
-import { View } from 'okta';
+import { View, _ } from 'okta';
 import hbs from 'handlebars-inline-precompile';
 import 'qtip';
 export default View.extend({
   className: 'scope-item',
   template: hbs(
     '\
-      <div class="scope-item-text">\
+      <div class="{{classNames}}">\
         <p>{{name}}</p>\
       </div>\
       {{#if description}}\
@@ -25,11 +25,18 @@ export default View.extend({
       {{/if}}\
     '
   ),
+  getTemplateData() {
+    const { name, description, isCustomized } = this.options;
+    const baseClass = 'scope-item-text';
+    const classNames = (name === 'openid' || isCustomized)
+      ? `${baseClass} no-translate`: baseClass;
+    return { classNames, name, description };
+  },
 
   postRender: function() {
     this.$('.scope-item-tooltip').qtip({
       content: {
-        text: this.options.description,
+        text: _.escape(this.options.description),
       },
       style: { classes: 'okta-tooltip qtip-custom qtip-shadow' },
       position: {

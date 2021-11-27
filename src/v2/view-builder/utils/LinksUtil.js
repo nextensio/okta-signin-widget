@@ -1,11 +1,10 @@
 import { loc, _ } from 'okta';
-import { FORMS as RemediationForms } from '../../ion/RemediationConstants';
+import { ACTIONS, FORMS as RemediationForms } from '../../ion/RemediationConstants';
 
-const ENROLLED_PASSWORD_RECOVERY_LINK = 'currentAuthenticatorEnrollment-recover';
-const ORG_PASSWORD_RECOVERY_LINK = 'currentAuthenticator-recover';
+const { ENROLLED_PASSWORD_RECOVERY_LINK, ORG_PASSWORD_RECOVERY_LINK } = ACTIONS;
 
 const getSwitchAuthenticatorLink = (appState) => {
-  if (appState.hasRemediationObject(RemediationForms.SELECT_AUTHENTICATOR_AUTHENTICATE)) {
+  if (appState.getRemediationAuthenticationOptions(RemediationForms.SELECT_AUTHENTICATOR_AUTHENTICATE).length > 1) {
     return [
       {
         'type': 'link',
@@ -16,7 +15,7 @@ const getSwitchAuthenticatorLink = (appState) => {
     ];
   }
 
-  if (appState.hasRemediationObject(RemediationForms.SELECT_AUTHENTICATOR_ENROLL)) {
+  if (appState.getRemediationAuthenticationOptions(RemediationForms.SELECT_AUTHENTICATOR_ENROLL).length > 1) {
     return [
       {
         'type': 'link',
@@ -81,12 +80,12 @@ const goBackLink = (appState) => {
   return [];
 };
 
-const getSkipSetupLink = (appState) => {
+const getSkipSetupLink = (appState, linkName) => {
   if (appState.hasRemediationObject(RemediationForms.SKIP)) {
     return [
       {
         'type': 'link',
-        'label': loc('oie.enroll.skip.setup', 'login'),
+        'label': linkName ?? loc('oie.enroll.skip.setup', 'login'),
         'name': 'skip-setup',
         'actionPath': RemediationForms.SKIP,
       }
@@ -96,7 +95,7 @@ const getSkipSetupLink = (appState) => {
   return [];
 };
 
-const getSignOutLink = (settings) => {
+const getSignOutLink = (settings, options = {}) => {
   if (settings?.get('signOutLink')) {
     return [
       {
@@ -109,7 +108,7 @@ const getSignOutLink = (settings) => {
     return [
       {
         'actionPath': 'cancel',
-        'label': loc('backToSignin', 'login'),
+        'label': !options.label ? loc('goback', 'login') : options.label,
         'name': 'cancel',
         'type': 'link'
       },
@@ -117,14 +116,27 @@ const getSignOutLink = (settings) => {
   }
 };
 
+// Use it to create a widget configured link in the absence of `cancel` object in remediation
 const getBackToSignInLink = (settings) => {
   return [
     {
       'type': 'link',
-      'label': loc('backToSignin', 'login'),
+      'label': loc('goback', 'login'),
       'name': 'go-back',
       // TODO: OKTA-381328 back to baseUrl only works for default login page
       'href': settings?.get('baseUrl'),
+    },
+  ];
+};
+
+const getReloadPageButtonLink = () => {
+  return [
+    {
+      'type': 'link',
+      'label': loc('oie.try.again', 'login'),
+      'name': 'try-again',
+      'href': window.location,
+      'className': 'button button-primary text-align-c'
     },
   ];
 };
@@ -135,7 +147,7 @@ const getSignUpLink = (appState, settings) => {
   if (appState.hasRemediationObject(RemediationForms.SELECT_ENROLL_PROFILE)) {
     const signupLinkData = {
       'type': 'link',
-      'label': loc('signup', 'login'),
+      'label': loc('oie.registration.form.title', 'login'),
       'name': 'enroll'
     };
     if (_.isFunction(settings.get('registration.click'))) {
@@ -156,5 +168,6 @@ export {
   getSignUpLink,
   getSignOutLink,
   getBackToSignInLink,
-  getSkipSetupLink
+  getSkipSetupLink,
+  getReloadPageButtonLink
 };

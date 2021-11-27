@@ -4,11 +4,12 @@ import { BaseView } from './internals';
 
 // Identify
 import IdentifierView from './views/IdentifierView';
+import RedirectIdPView from './views/RedirectIdPView';
 import IdentifyRecoveryView from './views/IdentifyRecoveryView';
 
-// Terminal & Success
+// Terminal & Auto-Redirect
 import TerminalView from './views/TerminalView';
-import SuccessView from './views/SuccessView';
+import AutoRedirectView from './views/AutoRedirectView';
 
 // safe mode poll view
 import PollView from './views/PollView';
@@ -26,6 +27,12 @@ import DeviceEnrollmentTerminalView from './views/device/DeviceEnrollmentTermina
 
 // registration
 import EnrollProfileView from './views/EnrollProfileView';
+
+// registration update
+import EnrollProfileUpdateView from './views/EnrollProfileUpdateView';
+
+// Email Activation
+import RequestActivationEmail from './views/activation/RequestActivationEmailView';
 
 // authenticator list
 import SelectAuthenticatorEnrollView from './views/SelectAuthenticatorEnrollView';
@@ -56,6 +63,7 @@ import ChallengeWebauthnView from './views/webauthn/ChallengeWebauthnView';
 // email
 import EnrollAuthenticatorEmailView from './views/email/EnrollAuthenticatorEmailView';
 import ChallengeAuthenticatorEmailView from './views/email/ChallengeAuthenticatorEmailView';
+import ChallengeAuthenticatorDataEmailView from './views/email/ChallengeAuthenticatorDataEmailView';
 
 // app (okta verify)
 import EnrollPollOktaVerifyView from './views/ov/EnrollPollOktaVerifyView';
@@ -93,6 +101,16 @@ import AuthenticatorSymantecView from './views/symantec/AuthenticatorSymantecVie
 // Device code activate view
 import DeviceCodeActivateView from './views/device/DeviceCodeActivateView';
 
+// X509 PIV view
+import ChallengePIVView from './views/piv/ChallengePIVView';
+
+// YubiKey
+import AuthenticatorYubiKeyView from './views/yubikey/AuthenticatorYubiKeyView';
+
+// custom app
+import ChallengePushView from './views/shared/ChallengePushView';
+import ChallengeCustomAppResendPushView from './views/custom-app/ChallengeCustomAppResendPushView'; 
+
 const DEFAULT = '_';
 
 const VIEWS_MAPPING = {
@@ -118,8 +136,14 @@ const VIEWS_MAPPING = {
   [RemediationForms.ENROLL_PROFILE]: {
     [DEFAULT]: EnrollProfileView,
   },
+  [RemediationForms.ENROLL_PROFILE_UPDATE]: {
+    [DEFAULT]: EnrollProfileUpdateView,
+  },
   [RemediationForms.POLL]: {
     [DEFAULT]: PollView
+  },
+  [RemediationForms.REQUEST_ACTIVATION]: {
+    [DEFAULT]: RequestActivationEmail
   },
   [RemediationForms.SELECT_AUTHENTICATOR_ENROLL]: {
     [DEFAULT]: SelectAuthenticatorEnrollView,
@@ -148,6 +172,7 @@ const VIEWS_MAPPING = {
     [AUTHENTICATOR_KEY.SECURITY_QUESTION]: EnrollAuthenticatorSecurityQuestion,
     [AUTHENTICATOR_KEY.SYMANTEC_VIP]: AuthenticatorSymantecView,
     [AUTHENTICATOR_KEY.WEBAUTHN]: EnrollWebauthnView,
+    [AUTHENTICATOR_KEY.YUBIKEY]: AuthenticatorYubiKeyView,
   },
   [RemediationForms.CHALLENGE_AUTHENTICATOR]: {
     [AUTHENTICATOR_KEY.CUSTOM_OTP]: ChallengeCustomOTPAuthenticatorView,
@@ -163,6 +188,7 @@ const VIEWS_MAPPING = {
     [AUTHENTICATOR_KEY.SECURITY_QUESTION]: ChallengeAuthenticatorSecurityQuestion,
     [AUTHENTICATOR_KEY.SYMANTEC_VIP]: AuthenticatorSymantecView,
     [AUTHENTICATOR_KEY.WEBAUTHN]: ChallengeWebauthnView,
+    [AUTHENTICATOR_KEY.YUBIKEY]: AuthenticatorYubiKeyView,
   },
   [RemediationForms.ENROLL_POLL]: {
     [AUTHENTICATOR_KEY.OV]: EnrollPollOktaVerifyView,
@@ -196,27 +222,33 @@ const VIEWS_MAPPING = {
   },
   [RemediationForms.CHALLENGE_POLL]: {
     [AUTHENTICATOR_KEY.OV]: ChallengeOktaVerifyView,
+    [AUTHENTICATOR_KEY.CUSTOM_APP]: ChallengePushView,
   },
   [RemediationForms.RESEND]: {
     [AUTHENTICATOR_KEY.OV]: ChallengeOktaVerifyResendPushView,
+    [AUTHENTICATOR_KEY.CUSTOM_APP]: ChallengeCustomAppResendPushView,
   },
   [RemediationForms.AUTHENTICATOR_VERIFICATION_DATA]: {
     [AUTHENTICATOR_KEY.PHONE]: ChallengeAuthenticatorDataPhoneView,
-    [AUTHENTICATOR_KEY.OV]: ChallengeAuthenticatorDataOktaVerifyView
+    [AUTHENTICATOR_KEY.OV]: ChallengeAuthenticatorDataOktaVerifyView,
+    [AUTHENTICATOR_KEY.EMAIL]: ChallengeAuthenticatorDataEmailView,
+  },
+  [RemediationForms.FAILURE_REDIRECT]: {
+    [DEFAULT]: AutoRedirectView,
   },
   [RemediationForms.SUCCESS_REDIRECT]: {
-    [DEFAULT]: SuccessView,
+    [DEFAULT]: AutoRedirectView,
   },
   [RemediationForms.REDIRECT_IDP]: {
-    // `redirect-idp` remediation object looks similar to identifier view.
-    // Seems not ideal, shall try to create dedicated View, which may
-    // inherit from IdentifierView
-    [DEFAULT]: IdentifierView,
+    [DEFAULT]: RedirectIdPView,
+  },
+  [RemediationForms.PIV_IDP]: {
+    [DEFAULT]: ChallengePIVView,
   },
   [RemediationForms.DEVICE_ENROLLMENT_TERMINAL]: {
     [DEFAULT]: DeviceEnrollmentTerminalView,
   },
-  [RemediationForms.ACTIVATE_DEVICE] : {
+  [RemediationForms.USER_CODE] : {
     [DEFAULT] : DeviceCodeActivateView
   },
   [RemediationForms.TERMINAL]: {

@@ -1,11 +1,12 @@
 import { RequestLogger, RequestMock } from 'testcafe';
+import { checkConsoleMessages, renderWidget } from '../framework/shared';
 import xhrAuthenticatorRequiredPassword from '../../../playground/mocks/data/idp/idx/authenticator-verification-password';
+import xhrSSPRSuccess from '../../../playground/mocks/data/idp/idx/terminal-reset-password-success';
 import xhrInvalidPassword from '../../../playground/mocks/data/idp/idx/error-authenticator-verify-password';
 import xhrForgotPasswordError from '../../../playground/mocks/data/idp/idx/error-forgot-password';
 import xhrSuccess from '../../../playground/mocks/data/idp/idx/success';
 import ChallengePasswordPageObject from '../framework/page-objects/ChallengePasswordPageObject';
 import SuccessPageObject from '../framework/page-objects/SuccessPageObject';
-import { checkConsoleMessages } from '../framework/shared';
 import sessionExpired from '../../../playground/mocks/data/idp/idx/error-pre-versioning-ff-session-expired';
 
 const mockChallengeAuthenticatorPassword = RequestMock()
@@ -31,6 +32,12 @@ const sessionExpiresDuringPassword = RequestMock()
   .respond(xhrAuthenticatorRequiredPassword)
   .onRequestTo('http://localhost:3000/idp/idx/challenge/answer')
   .respond(sessionExpired, 401);
+
+const resetPasswordSuccess = RequestMock()
+  .onRequestTo('http://localhost:3000/idp/idx/introspect')
+  .respond(xhrAuthenticatorRequiredPassword)
+  .onRequestTo('http://localhost:3000/idp/idx/challenge/answer')
+  .respond(xhrSSPRSuccess, 200);
 
 const recoveryRequestLogger = RequestLogger(
   /idp\/idx\/recover/,
@@ -76,6 +83,20 @@ test.requestHooks(mockChallengeAuthenticatorPassword)('challenge password authen
     .eql('http://localhost:3000/app/UserHome?stateToken=mockedStateToken123');
 });
 
+test.requestHooks(mockChallengeAuthenticatorPassword)('challenge password authenticator with no sign-out link', async t => {
+  const challengePasswordPage = await setup(t);
+  await renderWidget({
+    features: { hideSignOutLinkInMFA: true },
+  });
+
+  // assert switch authenticator link
+  await challengePasswordPage.switchAuthenticatorExists();
+  await t.expect(challengePasswordPage.getSwitchAuthenticatorButtonText()).eql('Verify with something else');
+
+  // signout link is not visible
+  await t.expect(await challengePasswordPage.signoutLinkExists()).notOk();
+});
+
 test.requestHooks(mockInvalidPassword)('challege password authenticator with invalid password', async t => {
   const challengePasswordPage = await setup(t);
   await challengePasswordPage.switchAuthenticatorExists();
@@ -99,6 +120,7 @@ test.requestHooks(mockInvalidPassword)('challege password authenticator with inv
         'errorCauses': [],
         'errorSummary': 'Password is incorrect',
         'errorSummaryKeys': ['incorrectPassword'],
+        'errorIntent': 'LOGIN',
       }
     }
   });
@@ -110,8 +132,18 @@ test.requestHooks(sessionExpiresDuringPassword)('challege password authenticator
   await challengePasswordPage.switchAuthenticatorExists();
   await challengePasswordPage.verifyFactor('credentials.passcode', 'test');
   await challengePasswordPage.clickNextButton();
-  await t.expect(challengePasswordPage.getErrorFromErrorBox()).eql('The session has expired.');
+  await t.expect(challengePasswordPage.getErrorFromErrorBox()).eql('You have been logged out due to inactivity. Refresh or return to the sign in screen.');
   await t.expect(challengePasswordPage.getSignoutLinkText()).eql('Back to sign in'); // confirm they can get out of terminal state
+});
+
+test.requestHooks(resetPasswordSuccess)('password changed successfully', async t => {
+  const challengePasswordPage = await setup(t);
+  await challengePasswordPage.switchAuthenticatorExists();
+  await challengePasswordPage.verifyFactor('credentials.passcode', 'test');
+  await challengePasswordPage.clickNextButton();
+
+  await t.expect(challengePasswordPage.getIonMessages()).eql('You can now sign in with your existing username and new password.');
+  await t.expect(challengePasswordPage.getGoBackLinkText()).eql('Back to sign in'); // confirm they can get out of terminal state
 });
 
 test.requestHooks(recoveryRequestLogger, mockCannotForgotPassword)('can not recover password', async t => {
@@ -142,4 +174,16 @@ test.requestHooks(recoveryRequestLogger, mockCannotForgotPassword)('can not reco
   });
   await t.expect(req1.method).eql('post');
   await t.expect(req1.url).eql('http://localhost:3000/idp/idx/recover');
+});
+
+test.requestHooks(mockChallengeAuthenticatorPassword)('should add sub labels for Password if i18n keys are defined', async t => {
+  const challengePasswordPage = await setup(t);
+  await renderWidget({
+    i18n: {
+      en: {
+        'primaryauth.password.tooltip': 'Your password goes here',
+      }
+    }
+  });
+  await t.expect(challengePasswordPage.getPasswordSubLabelValue()).eql('Your password goes here');
 });

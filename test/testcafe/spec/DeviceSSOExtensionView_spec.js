@@ -6,8 +6,9 @@ import identifyWithAppleCredentialSSOExtension from '../../../playground/mocks/d
 import identifyWithNoAppleCredentialSSOExtension from '../../../playground/mocks/data/idp/idx/identify-with-no-sso-extension';
 import identifyUserVerificationWithCredentialSSOExtension from '../../../playground/mocks/data/idp/idx/authenticator-verification-okta-verify-signed-nonce-credential-sso-extension';
 import identify from '../../../playground/mocks/data/idp/idx/identify';
-import error from '../../../playground/mocks/data/idp/idx/error-email-verify';
+import error from '../../../playground/mocks/data/idp/idx/error-403-access-denied';
 import { Constants } from '../framework/shared';
+import { getStateHandleFromSessionStorage } from '../framework/shared';
 
 const logger = RequestLogger(/introspect/);
 const verifyUrl = 'http://localhost:3000/idp/idx/authenticators/sso_extension/transactions/123/verify?\
@@ -134,6 +135,7 @@ test
     const identityPage = new IdentityPageObject(t);
     await identityPage.fillIdentifierField('Test Identifier');
     await t.expect(identityPage.getIdentifierValue()).eql('Test Identifier');
+    await t.expect(getStateHandleFromSessionStorage()).eql(null);
   });
 
 test

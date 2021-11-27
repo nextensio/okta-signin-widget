@@ -211,6 +211,13 @@ fn.waitForWindowListener = function(eventName, resolveValue) {
   return fn.wait(condition, resolveValue);
 };
 
+fn.waitForSecurityImageTooltip = function(expectToBeVisible, resolveValue) {
+  return fn.wait(() => {
+    const $el = $('.okta-security-image-tooltip:visible');
+    const isVisible = $el.isInViewport();
+    return isVisible === expectToBeVisible;
+  }, resolveValue);
+};
 
 fn.wait = function(condition, resolveValue, timeout) {
   function check(success, fail, triesLeft) {
@@ -268,10 +275,10 @@ fn.deprecated = function(msg) {
   expect(Logger.deprecate).toHaveBeenCalledWith(msg);
 };
 
-// Convenience function to test a json post - pass in url and data, and it
+// Convenience function to test a json response - pass in url and data, and it
 // will test the rest. Note: We JSON.stringify data here so you don't have to
 // JSON posts are done using fetch
-fn.isJsonPost = function(args, expected) {
+fn.isJsonResponse = function(args, method, expected) {
   // Jasmine times out if args doesn't exist when we try to retrieve
   // its properties. This makes it fail faster.
   if (!args) {
@@ -279,7 +286,7 @@ fn.isJsonPost = function(args, expected) {
     return;
   }
   expect(args.url).toBe(expected.url);
-  expect(args.method).toBe('POST');
+  expect(args.method).toBe(method);
   expect(args.requestHeaders).toEqual(
     jasmine.objectContaining({
       accept: 'application/json',
@@ -287,7 +294,21 @@ fn.isJsonPost = function(args, expected) {
     })
   );
   const data = args.data();
-  expect(data).toEqual(expected.data);
+  if (expected.data) {
+    expect(data).toEqual(expected.data);
+  }
+};
+
+fn.isJsonGet = function(args, expected) {
+  fn.isJsonResponse(args, 'GET', expected);
+};
+
+fn.isJsonPost = function(args, expected) {
+  fn.isJsonResponse(args, 'POST', expected);
+};
+
+fn.isJsonDelete = function(args, expected) {
+  fn.isJsonResponse(args, 'DELETE', expected);
 };
 
 // Form post is done using $.post
@@ -383,6 +404,8 @@ const controllerClasses = {
   VerifyPIV: 'piv-cac-card',
   Poll: 'poll',
   ErrorState: 'error-state',
+  DeviceCodeActivate: 'device-code-activate',
+  DeviceCodeTerminal: 'device-code-terminal'
 };
 
 _.each(controllerClasses, function(className, controller) {

@@ -1,0 +1,14 @@
+{
+  "extends": [
+    "eslint:recommended",
+    "plugin:jasmine/recommended"
+  ],
+  "plugins": [
+    "jasmine",
+    "webdriverio"
+  ],
+  "env": {
+    "webdriverio/wdio": true,
+    "jasmine": true
+  }
+}

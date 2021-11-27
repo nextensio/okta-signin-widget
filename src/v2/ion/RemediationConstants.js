@@ -22,7 +22,9 @@ const FORMS = {
   IDENTIFY_RECOVERY: 'identify-recovery',
   SELECT_ENROLL_PROFILE: 'select-enroll-profile',
   ENROLL_PROFILE: 'enroll-profile',
+  ENROLL_PROFILE_UPDATE: 'profile-update',
   UNLOCK_ACCOUNT: 'unlock-account',
+  REQUEST_ACTIVATION: 'request-activation-email',
 
   CONSENT_ADMIN: 'admin-consent',
   CONSENT_ENDUSER: 'consent',
@@ -49,8 +51,10 @@ const FORMS = {
   SKIP: 'skip',
   POLL: 'poll',
 
+  FAILURE_REDIRECT: 'failure-redirect',
   SUCCESS_REDIRECT: 'success-redirect',
   REDIRECT_IDP: 'redirect-idp',
+  PIV_IDP: 'piv-idp',
 
   DEVICE_CHALLENGE_POLL: 'device-challenge-poll',
   DEVICE_APPLE_SSO_EXTENSION: 'device-apple-sso-extension',
@@ -58,7 +62,7 @@ const FORMS = {
   LAUNCH_AUTHENTICATOR: 'launch-authenticator',
   DEVICE_ENROLLMENT_TERMINAL: 'device-enrollment-terminal',
 
-  ACTIVATE_DEVICE: 'activate-device',
+  USER_CODE: 'user-code',
 
   // 'terminal` is not ION Form name but only coined in widget
   // for rendering a page that user has nothing to remediate.
@@ -69,12 +73,11 @@ const FORMS_WITHOUT_SIGNOUT = [
   FORMS.IDENTIFY,
   FORMS.SUCCESS_REDIRECT,
   FORMS.ENROLL_PROFILE,
-  FORMS.REDIRECT_IDP,
   FORMS.DEVICE_ENROLLMENT_TERMINAL,
   FORMS.CONSENT_ADMIN,
   FORMS.CONSENT_ENDUSER,
   FORMS.CONSENT_EMAIL_CHALLENGE,
-  FORMS.ACTIVATE_DEVICE
+  FORMS.USER_CODE
 ];
 
 const FORMS_WITH_STATIC_BACK_LINK = [
@@ -103,6 +106,8 @@ const AUTHENTICATOR_KEY = {
   IDP: 'external_idp',
   CUSTOM_OTP: 'custom_otp',
   SYMANTEC_VIP: 'symantec_vip',
+  YUBIKEY: 'yubikey_token',
+  CUSTOM_APP: 'custom_app',
 };
 
 const AUTHENTICATOR_METHODS = {
@@ -115,7 +120,35 @@ const FORM_NAME_TO_OPERATION_MAP = {
   [FORMS.IDENTIFY_RECOVERY]: Enums.FORGOT_PASSWORD,
 };
 
+const ENROLLED_PASSWORD_RECOVERY_LINK = 'currentAuthenticatorEnrollment-recover';
+const ORG_PASSWORD_RECOVERY_LINK = 'currentAuthenticator-recover';
+const ACTIONS = {
+  ENROLLED_PASSWORD_RECOVERY_LINK,
+  ORG_PASSWORD_RECOVERY_LINK
+};
+
+// Possible Remediation Form Field Hints
+const HINTS = {
+  CAPTCHA: 'captcha',
+};
+
+const TERMINAL_FORMS = [
+  FORMS.TERMINAL,
+  FORMS.DEVICE_ENROLLMENT_TERMINAL,
+];
+const IDP_FORM_TYPE = {
+  X509: 'X509',
+};
+
+// Possible options for the SIW interstitial redirect view
+const INTERSTITIAL_REDIRECT_VIEW = {
+  DEFAULT: 'DEFAULT',
+  NONE: 'NONE'
+};
+
+
 export {
+  ACTIONS,
   FORMS,
   FORMS_WITHOUT_SIGNOUT,
   FORMS_WITH_STATIC_BACK_LINK,
@@ -123,4 +156,8 @@ export {
   AUTHENTICATOR_KEY,
   AUTHENTICATOR_METHODS,
   FORM_NAME_TO_OPERATION_MAP,
+  HINTS,
+  TERMINAL_FORMS,
+  IDP_FORM_TYPE,
+  INTERSTITIAL_REDIRECT_VIEW,
 };

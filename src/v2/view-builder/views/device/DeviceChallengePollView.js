@@ -1,12 +1,13 @@
 import { $, loc } from 'okta';
-import { BaseForm, BaseFormWithPolling, BaseFooter, BaseView } from '../../internals';
+import { BaseFormWithPolling, BaseFooter, BaseView } from '../../internals';
 import Logger from '../../../../util/Logger';
 import BrowserFeatures from '../../../../util/BrowserFeatures';
 import Enums from '../../../../util/Enums';
-import { CANCEL_POLLING_ACTION } from '../../utils/Constants';
+import { CANCEL_POLLING_ACTION, CHALLENGE_TIMEOUT, IDENTIFIER_FLOW } from '../../utils/Constants';
 import Link from '../../components/Link';
 import { doChallenge } from '../../utils/ChallengeViewUtil';
 import OktaVerifyAuthenticatorHeader from '../../components/OktaVerifyAuthenticatorHeader';
+import { getSignOutLink } from '../../utils/LinksUtil';
 
 const request = (opts) => {
   const ajaxOptions = Object.assign({
@@ -32,17 +33,21 @@ const Body = BaseFormWithPolling.extend(
     initialize() {
       BaseFormWithPolling.prototype.initialize.apply(this, arguments);
       this.listenTo(this.model, 'error', this.onPollingFail);
-      doChallenge(this);
+      doChallenge(this, IDENTIFIER_FLOW);
       this.startPolling();
     },
 
     onPollingFail() {
       this.$('.spinner').hide();
       this.stopPolling();
+      // When SIW receives form error, polling is already stopped
+      // SIW needs to update footer link from /poll/cancel to /idp/idx/cancel
+      const data = { label: loc('loopback.polling.cancel.link.with.form.error', 'login') };
+      this.options.appState.trigger('updateFooterLink', data);
     },
 
     remove() {
-      BaseForm.prototype.remove.apply(this, arguments);
+      BaseFormWithPolling.prototype.remove.apply(this, arguments);
       this.stopProbing();
       this.stopPolling();
     },
@@ -51,7 +56,12 @@ const Body = BaseFormWithPolling.extend(
       return this.options.currentViewState.relatesTo.value;
     },
 
-    doLoopback(authenticatorDomainUrl = '', ports = [], challengeRequest = '') {
+    doLoopback(deviceChallenge) {
+      let authenticatorDomainUrl = deviceChallenge.domain !== undefined ? deviceChallenge.domain : '';
+      let ports = deviceChallenge.ports !== undefined ? deviceChallenge.ports : [];
+      let challengeRequest = deviceChallenge.challengeRequest !== undefined ? deviceChallenge.challengeRequest : '';
+      let probeTimeoutMillis = deviceChallenge.probeTimeoutMillis !== undefined ?
+        deviceChallenge.probeTimeoutMillis : 100;
       let currentPort;
       let foundPort = false;
       let countFailedPorts = 0;
@@ -63,10 +73,15 @@ const Body = BaseFormWithPolling.extend(
       const checkPort = () => {
         return request({
           url: getAuthenticatorUrl('probe'),
-          // in loopback server, SSL handshake sometimes takes more than 100ms and thus needs additional timeout
-          // however, increasing timeout is a temporary solution since user will need to wait much longer in worst case
-          // TODO: OKTA-278573 Android timeout is temporarily set to 3000ms and needs optimization post-Beta
-          timeout: BrowserFeatures.isAndroid() ? 3000 : 100
+          /*
+          OKTA-278573 in loopback server, SSL handshake sometimes takes more than 100ms and thus needs additional
+          timeout however, increasing timeout is a temporary solution since user will need to wait much longer in
+          worst case.
+          TODO: Android timeout is temporarily set to 3000ms and needs optimization post-Beta.
+          OKTA-365427 introduces probeTimeoutMillis; but we should also consider probeTimeoutMillisHTTPS for
+          customizing timeouts in the more costly Android and other (keyless) HTTPS scenarios.
+          */
+          timeout: BrowserFeatures.isAndroid() ? 3000 : probeTimeoutMillis
         });
       };
 
@@ -75,7 +90,7 @@ const Body = BaseFormWithPolling.extend(
           url: getAuthenticatorUrl('challenge'),
           method: 'POST',
           data: JSON.stringify({ challengeRequest }),
-          timeout: 3000 // authenticator should respond within 3000ms for challenge request
+          timeout: CHALLENGE_TIMEOUT // authenticator should respond within 5 min (300000ms) for challenge request
         });
       };
 
@@ -103,7 +118,12 @@ const Body = BaseFormWithPolling.extend(
               return this.trigger('save', this.model);
             }).fail((xhr) => {
               Logger.error(`OV challenge response with HTTP code ${xhr.status} ${xhr.responseText}`);
-              onPortFail();
+              if (xhr.statusText === 'timeout') {
+                foundPort = true;
+                return this.trigger('save', this.model);
+              } else {
+                onPortFail();
+              }
             });
           })
           .fail(onFailure);
@@ -141,30 +161,43 @@ const Body = BaseFormWithPolling.extend(
 
 const Footer = BaseFooter.extend({
   initialize() {
-    const isFallbackApproach = [
-      Enums.CUSTOM_URI_CHALLENGE,
-      Enums.UNIVERSAL_LINK_CHALLENGE
-    ].includes(this.options.currentViewState.relatesTo.value.challengeMethod);
-    if (isFallbackApproach) {
-      this.links = [
-        {
-          name: 'sign-in-options',
-          type: 'link',
-          label: loc('oie.verification.switch.authenticator', 'login'),
-          href: this.settings.get('baseUrl')
-        }
-      ];
+    this.listenTo(this.options.appState, 'updateFooterLink', this.handleUpdateFooterLink);
+    if (this.isFallbackApproach() && !this.isFallbackDelayed()) {
       BaseFooter.prototype.initialize.apply(this, arguments);
     } else {
-      this.add(Link, {
+      this.backLink = this.add(Link, {
         options: {
           name: 'cancel-authenticator-challenge',
           label: loc('loopback.polling.cancel.link', 'login'),
           actionPath: CANCEL_POLLING_ACTION,
         }
-      });
+      }).last();
     }
-  }
+  },
+
+  handleUpdateFooterLink(data) {
+    // only update link for loopback
+    if (!this.isFallbackApproach() || this.isFallbackDelayed()) {
+      this.backLink && this.backLink.remove();
+      this.backLink = this.add(Link, {
+        options: getSignOutLink(this.options.settings, data)[0]
+      }).last();
+    } 
+  },
+
+  isFallbackApproach() {
+    return [
+      Enums.CUSTOM_URI_CHALLENGE,
+      Enums.UNIVERSAL_LINK_CHALLENGE,
+      Enums.APP_LINK_CHALLENGE
+    ].includes(this.options.currentViewState.relatesTo.value.challengeMethod);
+  },
+
+  isFallbackDelayed() {
+    // only delay showing the reopen Okta Verify button for the app link approach for now
+    // until we have more data shows other approaches have the slow cold start problem of the Okta Verify app as well
+    return this.options.currentViewState.relatesTo.value.challengeMethod === Enums.APP_LINK_CHALLENGE;
+  },
 });
 
 export default BaseView.extend({

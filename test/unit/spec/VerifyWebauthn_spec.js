@@ -1,7 +1,7 @@
 /* eslint max-params: [2, 19] */
 
 import { _, $ } from 'okta';
-import createAuthClient from 'widget/createAuthClient';
+import getAuthClient from 'widget/getAuthClient';
 import Router from 'LoginRouter';
 import Beacon from 'helpers/dom/Beacon';
 import MfaVerifyForm from 'helpers/dom/MfaVerifyForm';
@@ -77,7 +77,9 @@ function clickFactorInDropdown(test, factorName) {
 function setup(options) {
   const setNextResponse = Util.mockAjax();
   const baseUrl = 'https://foo.com';
-  const authClient = createAuthClient({ issuer: baseUrl, transformErrorXHR: LoginUtil.transformErrorXHR });
+  const authClient = getAuthClient({
+    authParams: { issuer: baseUrl, transformErrorXHR: LoginUtil.transformErrorXHR }
+  });
   const successSpy = jasmine.createSpy('success');
   const afterErrorHandler = jasmine.createSpy('afterErrorHandler');
   const router = createRouter(baseUrl, authClient, successSpy, { ...options.settings, 'features.webauthn': true });
@@ -107,7 +109,6 @@ function setup(options) {
         forms = forms[0];
       }
       const beacon = new Beacon($sandbox);
-
       return {
         router: router,
         form: forms,
@@ -128,9 +129,13 @@ const testChallenge = 'kygOUtSWURMv_t_Gj71Y';
 
 function mockWebauthn(options) {
   if (options.webauthnSupported) {
-    navigator.credentials = {
-      get: jasmine.createSpy('webauthn-spy'),
-    };
+    Object.defineProperty(navigator, 'credentials', {
+      value: {
+        get: () => jasmine.createSpy('webauthn-spy'),
+      },
+      configurable: true
+    });
+
     if (options.signStatus === 'fail') {
       mockWebauthnSignFailure();
     } else if (options.signStatus === 'success') {
@@ -192,7 +197,9 @@ function setupMultipleWebauthnOnly(options) {
   mockWebauthn(options);
   const setNextResponse = Util.mockAjax();
   const baseUrl = 'https://foo.com';
-  const authClient = createAuthClient({ issuer: baseUrl, transformErrorXHR: LoginUtil.transformErrorXHR });
+  const authClient = getAuthClient({
+    authParams: { issuer: baseUrl, transformErrorXHR: LoginUtil.transformErrorXHR }
+  });
   const successSpy = jasmine.createSpy('success');
   const afterErrorHandler = jasmine.createSpy('afterErrorHandler');
   const router = createRouter(baseUrl, authClient, successSpy, { ...options.settings, 'features.webauthn': true });
@@ -254,7 +261,7 @@ function testWebauthnFactor(setupFn, webauthnOnly) {
 
   itp('shows error if browser does not support webauthn', function() {
     return setupFn({ webauthnSupported: false }).then(function(test) {
-      expect(test.form.el('o-form-error-html')).toHaveLength(1);
+      expect(test.form.el('o-form-error-html').length).toEqual(1);
       const errorMessage = webauthnOnly
         ? 'Security key or biometric authenticator is not supported on this browser. ' +
             'Contact your admin for assistance.'
@@ -267,7 +274,7 @@ function testWebauthnFactor(setupFn, webauthnOnly) {
 
   itp('does not show error if browser supports webauthn', function() {
     return setupFn({ webauthnSupported: true }).then(function(test) {
-      expect(test.form.el('o-form-error-html')).toHaveLength(0);
+      expect(test.form.el('o-form-error-html').length).toEqual(0);
     });
   });
 
@@ -296,6 +303,7 @@ function testWebauthnFactor(setupFn, webauthnOnly) {
   itp('has a sign out link', function() {
     return setupFn({ webauthnSupported: true }).then(function(test) {
       Expect.isVisible(test.form.signoutLink($sandbox));
+      expect(test.form.signoutLink($sandbox).text()).toBe('Back to sign in');
     });
   });
   itp('does not have sign out link if features.hideSignOutLinkInMFA is true', function() {
@@ -414,7 +422,7 @@ function testMultipleWebauthnFactor(setupFn) {
       .then(function(test) {
         expect(navigator.credentials.get).toHaveBeenCalled();
         expect(test.form.hasErrors()).toBe(true);
-        expect(test.form.errorBox()).toHaveLength(1);
+        expect(test.form.errorBox().length).toEqual(1);
         expect(test.form.errorMessage()).toEqual('something went wrong');
         expect(test.afterErrorHandler).toHaveBeenCalledTimes(1);
         expect(test.form.submitButton().css('display')).toBe('block');
@@ -528,7 +536,7 @@ Expect.describe('Webauthn Factor', function() {
       .then(function(test) {
         expect(navigator.credentials.get).toHaveBeenCalled();
         expect(test.form.hasErrors()).toBe(true);
-        expect(test.form.errorBox()).toHaveLength(1);
+        expect(test.form.errorBox().length).toEqual(1);
         expect(test.form.errorMessage()).toEqual('something went wrong');
         expect(test.afterErrorHandler).toHaveBeenCalledTimes(1);
         expect(test.router.controller.model.webauthnAbortController).toBe(null);

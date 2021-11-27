@@ -11,7 +11,7 @@
  */
 
 import { _ } from 'okta';
-import { FORMS as RemediationForms } from './RemediationConstants';
+import { FORMS as RemediationForms, AUTHENTICATOR_KEY, IDP_FORM_TYPE } from './RemediationConstants';
 
 /**
  * Transform the ion spec response into canonical format.
@@ -29,6 +29,8 @@ import { FORMS as RemediationForms } from './RemediationConstants';
  */
 
 const isObject = x => _.isObject(x);
+
+const isError = response => !!response.messages;
 
 /**
  * Flatten first level objects from response
@@ -165,35 +167,57 @@ const convertRedirectIdPToSuccessRedirectIffOneIdp = (settings, result, lastResu
       value: [],
     };
     result.remediations = [successRedirect];
-
   }
 };
 
-
 /**
- * API reuses `redirect-idp` remeditaion form for IdP Authenticator for both verify and enroll.
- * Hence IdP Authenticator becomes outlier comparing with other Authenticators in terms of
+ * API reuses `redirect-idp` remediation form for PIV IdP and IdP Authenticator.
+ * IdP Authenticator becomes outlier comparing with other Authenticators in terms of
  * using `challenge-authenticator` and `enroll-authenticator` remediation form.
+ * The UX for PIV IdP is different from other idps in terms of the PIV
+ * instructions view that needs to be rendered before we redirect to mtls.
  *
- * This function change `redirect-idp` to `challenge-authenticator` or `enroll-authenticator`
- * for IdP Authenticator.
+ * This function changes `redirect-idp` to `challenge-authenticator` or `enroll-authenticator`
+ * for IdP Authenticator and changes `redirect-idp` to `piv-idp` for PIV IdP.
  */
-const modifyFormNameForIdPAuthenticator = result => {
+const modifyFormNameForIdP = result => {
   if (Array.isArray(result.remediations)) {
-    const idpAuthenticator = result.remediations.filter(
-      remediation => {
-        return remediation.name === RemediationForms.REDIRECT_IDP
-          && remediation?.relatesTo?.value?.key === 'external_idp';
+    result.remediations.forEach(remediation => {
+      if (remediation.name === RemediationForms.REDIRECT_IDP &&
+          remediation?.relatesTo?.value?.key === AUTHENTICATOR_KEY.IDP) {
+        // idp authenticator
+        const isVerifyFlow = Object.prototype.hasOwnProperty.call(result, 'currentAuthenticatorEnrollment');
+        remediation.name = isVerifyFlow ? 'challenge-authenticator' : 'enroll-authenticator';
       }
-    );
-
-    if (idpAuthenticator.length === 1) {
-      const isVerifyFlow = Object.prototype.hasOwnProperty.call(result, 'currentAuthenticatorEnrollment');
-      idpAuthenticator[0].name = isVerifyFlow ? 'challenge-authenticator' : 'enroll-authenticator';
-    }
-
+      if (remediation.name === RemediationForms.REDIRECT_IDP && remediation.type === IDP_FORM_TYPE.X509) {
+        // piv idp
+        remediation.name = RemediationForms.PIV_IDP;
+      }
+    });
   }
+};
 
+const isFailureRedirect = (result) => {
+  const context = result.idx.context;
+  return (context.failure && context.failure.name === 'failure-redirect');
+};
+
+const handleFailureRedirect = (settings, result) => {
+  const context = result.idx.context;
+
+  // Direct auth clients will usually prefer to display the error instead of redirecting
+  const isDirectAuth = settings.get('oauth2Enabled');
+  const alwaysRedirect = settings.get('redirect') === 'always'; // redirect option overrides default behavior
+  if (isDirectAuth && !alwaysRedirect) {
+    return;
+  }
+  
+  const failureRedirect = {
+    name: RemediationForms.FAILURE_REDIRECT,
+    href: context.failure.href,
+    value: [],
+  };
+  result.remediations = [failureRedirect];
 };
 
 /**
@@ -218,23 +242,29 @@ const convert = (settings, idx = {}, lastResult = null) => {
   if (!isObject(idx.rawIdxState)) {
     return null;
   }
+
+  // build result object
   const firstLevelObjects = getFirstLevelObjects(idx.rawIdxState);
-
   const remediationValues = getRemediationValues(idx);
-
   const result = Object.assign({},
     firstLevelObjects,
     remediationValues,
     { idx }
   );
-
-  injectIdPConfigButtonToRemediation(settings, result);
-  if (!result.messages) {
-    // Only redirect to the IdP if we are not in an error flow
-    convertRedirectIdPToSuccessRedirectIffOneIdp(settings, result, lastResult);
+  
+  // transform result object
+  if (isError(result) && isFailureRedirect(result)) {
+    handleFailureRedirect(settings, result);
   }
 
-  modifyFormNameForIdPAuthenticator(result);
+  // Override the `result` to handle custom IdP login buttons
+  // and update the form for IdP Authenticators.
+  injectIdPConfigButtonToRemediation(settings, result);
+  modifyFormNameForIdP(result);
+
+  if (!isError(result)) { // Only redirect to the IdP if we are not in an error flow
+    convertRedirectIdPToSuccessRedirectIffOneIdp(settings, result, lastResult);
+  }
 
   return result;
 };

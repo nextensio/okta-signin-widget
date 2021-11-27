@@ -1,11 +1,14 @@
-import { RequestMock, ClientFunction } from 'testcafe';
-import { checkConsoleMessages } from '../framework/shared';
+import { RequestMock, RequestLogger } from 'testcafe';
+import { checkConsoleMessages, renderWidget as rerenderWidget } from '../framework/shared';
 import IdentityPageObject from '../framework/page-objects/IdentityPageObject';
 import RegistrationPageObject from '../framework/page-objects/RegistrationPageObject';
 import identify from '../../../playground/mocks/data/idp/idx/identify';
 import enrollProfileNew from '../../../playground/mocks/data/idp/idx/enroll-profile-new';
 import enrollProfileError from '../../../playground/mocks/data/idp/idx/error-new-signup-email';
-import enrollProfileFinish from '../../../playground/mocks/data/idp/idx/terminal-registration.json';
+import enrollProfileFinish from '../../../playground/mocks/data/idp/idx/terminal-registration';
+import enrollProfileNewError from '../../../playground/mocks/data/idp/idx/error-new-signup-email-exists';
+// import enrollProfileNewCustomLabel from '../../../playground/mocks/data/idp/idx/enroll-profile-new-custom-labels';
+
 
 const mock = RequestMock()
   .onRequestTo('http://localhost:3000/idp/idx/introspect')
@@ -14,6 +17,14 @@ const mock = RequestMock()
   .respond(enrollProfileNew)
   .onRequestTo('http://localhost:3000/idp/idx/enroll/new')
   .respond(enrollProfileFinish);
+
+const enrollProfileNewMock = RequestMock()
+  .onRequestTo('http://localhost:3000/idp/idx/introspect')
+  .respond(identify)
+  .onRequestTo('http://localhost:3000/idp/idx/enroll')
+  .respond(enrollProfileNew)
+  .onRequestTo('http://localhost:3000/idp/idx/enroll/new')
+  .respond(enrollProfileNewError, 403);
 
 const enrollProfileErrorMock = RequestMock()
   .onRequestTo('http://localhost:3000/idp/idx/introspect')
@@ -29,13 +40,17 @@ identifyWithoutEnrollProfile.remediation.value = identifyWithoutEnrollProfile
   .value
   .filter(r => r.name !== 'select-enroll-profile');
 
+const logger = RequestLogger(
+  /new/,
+  {
+    logRequestBody: true,
+    stringifyRequestBody: true,
+  }
+);
+
 const enrolProfileDisabledMock = RequestMock()
   .onRequestTo('http://localhost:3000/idp/idx/introspect')
   .respond(identifyWithoutEnrollProfile);
-
-const rerenderWidget = ClientFunction((settings) => {
-  window.renderPlaygroundWidget(settings);
-});
 
 fixture('Registration');
 
@@ -66,8 +81,12 @@ test.requestHooks(mock)('should have editable fields and have account label', as
   await verifyRegistrationPageEvent();
 
   /* i18n tests */
-  await t.expect(registrationPage.getHaveAccountLabel()).eql('Already have an account ?');
+  await t.expect(registrationPage.getHaveAccountLabel()).eql('Already have an account?');
   await t.expect(await registrationPage.signoutLinkExists()).notOk();
+
+  await t.expect(await registrationPage.getFormFieldLabel('userProfile.email')).eql('Email');
+  await t.expect(await registrationPage.getFormFieldLabel('userProfile.firstName')).eql('First name');
+  await t.expect(await registrationPage.getFormFieldLabel('userProfile.lastName')).eql('Last name');
 
   await registrationPage.fillFirstNameField('Test First Name');
   await registrationPage.fillLastNameField('Test Last Name');
@@ -145,6 +164,10 @@ test.requestHooks(enrollProfileErrorMock)('should show email field validation er
         'errorSummary': '',
         'errorCauses': [
           {
+            'errorKey': [
+              'registration.error.invalidLoginEmail',
+              'registration.error.doesNotMatchPattern'
+            ],
             'errorSummary': [
               '\'Email\' must be in the form of an email address',
               'Provided value for property \'Email\' does not match required pattern'
@@ -152,7 +175,8 @@ test.requestHooks(enrollProfileErrorMock)('should show email field validation er
             'property': 'userProfile.email'
           }
         ],
-        'errorSummaryKeys': []
+        'errorSummaryKeys': [],
+        'errorIntent': 'LOGIN',
       }
     }
   });
@@ -170,7 +194,7 @@ test.requestHooks(mock)('should show terminal screen after registration', async 
 
   // show successful terminal view and fires after render event
   await t.expect(registrationPage.getTerminalContent()).eql(
-    'An activation email has been sent to john@gmail.com. Follow instructions in the email to finish creating your account'
+    'To finish signing in, check your email.'
   );
 
   await checkConsoleMessages([
@@ -214,7 +238,7 @@ test.requestHooks(mock)('should show register page directly and be able to creat
   await registrationPage.clickRegisterButton();
 
   // show registration success terminal view
-  await t.expect(registrationPage.getTerminalContent()).eql('An activation email has been sent to john@gmail.com. Follow instructions in the email to finish creating your account');
+  await t.expect(registrationPage.getTerminalContent()).eql('To finish signing in, check your email.');
   await checkConsoleMessages([
     'ready',
     'afterRender',
@@ -230,7 +254,46 @@ test.requestHooks(mock)('should show register page directly and be able to creat
   ]);
 });
 
-test.requestHooks(enrolProfileDisabledMock)('should shall terminal error when registration is not supported', async t => {
+test.requestHooks(logger, enrollProfileNewMock)('should be able to create a new account after previous attempt failed server validation', async t => {
+  const registrationPage = new RegistrationPageObject(t);
+  await registrationPage.navigateToPage();
+
+  //create new account
+  await registrationPage.fillFirstNameField('abc');
+  await registrationPage.fillLastNameField('xyz');
+  await registrationPage.fillEmailField('foo@ex.com');
+
+  //click register
+  await registrationPage.clickRegisterButton();
+  await t.expect(registrationPage.getEmailErrorMessage()).eql('A user with this Email already exists');
+  let req = logger.requests[0].request;
+  let reqBody = JSON.parse(req.body);
+  await t.expect(reqBody).eql({
+    stateHandle: '01OCl7uyAUC4CUqHsObI9bvFiq01cRFgbnpJQ1bz82',
+    userProfile: {
+      firstName: 'abc',
+      lastName: 'xyz',
+      email: 'foo@ex.com'
+    }
+  });
+
+  // change email
+  await registrationPage.fillEmailField('newFoo@ex.com');
+  await registrationPage.clickRegisterButton();
+  req = logger.requests[1].request;
+  reqBody = JSON.parse(req.body);
+
+  await t.expect(reqBody).eql({
+    stateHandle: '01OCl7uyAUC4CUqHsObI9bvFiq01cRFgbnpJQ1bz82',
+    userProfile: {
+      firstName: 'abc',
+      lastName: 'xyz',
+      email: 'newFoo@ex.com'
+    }
+  });
+});
+
+test.requestHooks(enrolProfileDisabledMock)('should show terminal error when registration is not supported', async t => {
   const registrationPage = new RegistrationPageObject(t);
 
   // navigate to /signin/register and show registration page immediately
@@ -270,3 +333,14 @@ test.requestHooks(mock)('should call settings.registration.click on "Sign Up" cl
   // will not navigate to register page
   await t.expect(identityPage.getPageTitle()).eql('Sign In');
 });
+
+// TODO : OKTA-397225
+// Uncomment once we support custom labels
+// test.requestHooks(enrollProfileNewCustomLabelMock)('should show custom labels', async t => {
+//   const registrationPage = await setup(t);
+
+//   await t.expect(await registrationPage.getFormFieldLabel('userProfile.email')).eql('This is your awesome email address');
+//   await t.expect(await registrationPage.getFormFieldLabel('userProfile.firstName')).eql('Please enter your first name');
+//   await t.expect(await registrationPage.getFormFieldLabel('userProfile.lastName')).eql('Please enter your last name');
+
+// });

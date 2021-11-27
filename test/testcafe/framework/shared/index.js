@@ -24,8 +24,17 @@ export async function checkConsoleMessages(context = {}) {
     case 'afterRender':
       await t.expect(log[i]).eql('===== playground widget afterRender event received =====');
       break;
-    default:
-      await t.expect(JSON.parse(log[i])).eql(context[i]);
+    default: {
+      /* eslint max-depth: [2, 3] */
+      const parsedLog = JSON.parse(log[i]);
+      if (context[i].status === 'SUCCESS') {
+        await t.expect(parsedLog.status).eql('SUCCESS');
+        await t.expect(parsedLog.tokens.accessToken.accessToken).eql(context[i].accessToken);
+        await t.expect(parsedLog.tokens.idToken.idToken).eql(context[i].idToken);
+      } else {
+        await t.expect(parsedLog).eql(context[i]);
+      }
+    }
     }
   }
 }
@@ -35,3 +44,6 @@ export const Constants = {
   TESTCAFE_DEFAULT_AJAX_WAIT: 3000, // 3seconds
 };
 
+export const getStateHandleFromSessionStorage = ClientFunction(() => {
+  return window.sessionStorage.getItem('osw-oie-state-handle');
+});

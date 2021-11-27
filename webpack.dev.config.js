@@ -1,6 +1,6 @@
 var common    = require('./webpack.common.config');
-var plugins   = require('./buildtools/webpack/plugins');
-var usePolyfill = require('./buildtools/webpack/polyfill');
+var plugins   = require('./scripts/buildtools/webpack/plugins');
+var usePolyfill = require('./scripts/buildtools/webpack/polyfill');
 var path       = require('path');
 var PLAYGROUND = path.resolve(__dirname, 'playground');
 
@@ -15,6 +15,10 @@ module.exports = (env = {}) => {
     })
   };
   usePolyfill(webpackConfig);
+
+  if (!isProduction) {
+    webpackConfig.optimization.minimize = false;
+  }
 
   if (env.mockDuo) {
     console.log('======> Mocking Duo iFrame');  // eslint-disable-line no-console

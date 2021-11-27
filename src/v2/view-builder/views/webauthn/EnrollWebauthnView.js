@@ -4,11 +4,12 @@ import BaseAuthenticatorView from '../../components/BaseAuthenticatorView';
 import webauthn from '../../../../util/webauthn';
 import CryptoUtil from '../../../../util/CryptoUtil';
 import EnrollWebauthnInfoView from './EnrollWebauthnInfoView';
+import { getMessageFromBrowserError } from '../../../ion/i18nTransformer';
 
 function getExcludeCredentials(authenticatorEnrollments = []) {
   const credentials = [];
   authenticatorEnrollments.forEach((enrollement) => {
-    if (enrollement.type === 'security_key') {
+    if (enrollement.key === 'webauthn') {
       credentials.push({
         type: 'public-key',
         id: CryptoUtil.strToBin(enrollement.credentialId),
@@ -19,7 +20,9 @@ function getExcludeCredentials(authenticatorEnrollments = []) {
 }
 
 const Body = BaseForm.extend({
-  title: loc('oie.enroll.webauthn.title', 'login'),
+  title() {
+    return loc('oie.enroll.webauthn.title', 'login');
+  },
   className: 'oie-enroll-webauthn',
   modelEvents: {
     'error': '_stopEnrollment',
@@ -80,7 +83,7 @@ const Body = BaseForm.extend({
         this.saveForm(this.model);
       })
         .catch((error) => {
-          this.model.trigger('error', this.model, {responseJSON: {errorSummary: error.message}});
+          this.model.trigger('error', this.model, {responseJSON: {errorSummary: getMessageFromBrowserError(error)}});
         }).finally(() => {
           this.webauthnAbortController = null;
         });

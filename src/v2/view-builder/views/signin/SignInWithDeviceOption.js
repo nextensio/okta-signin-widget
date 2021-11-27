@@ -4,6 +4,7 @@ import Util from '../../../../util/Util';
 import Enums from '../../../../util/Enums';
 import { UNIVERSAL_LINK_POST_DELAY } from '../../utils/Constants';
 import { FORMS } from '../../../ion/RemediationConstants';
+import { appendLoginHint } from '../../utils/ChallengeViewUtil';
 
 export default View.extend({
   className: 'sign-in-with-device-option',
@@ -31,13 +32,26 @@ export default View.extend({
       icon: 'okta-verify-authenticator',
       title: loc('oktaVerify.button', 'login'),
       click() {
+        if (this.settings.get('features.engFastpassMultipleAccounts') && this.model.get('identifier')) {
+          this.options.settings.set('identifier', encodeURIComponent(this.model.get('identifier')));
+        }
+
         const isUVapproach = deviceChallenge?.challengeMethod === Enums.UNIVERSAL_LINK_CHALLENGE;
         if (isUVapproach) {
           // launch the Okta Verify app
-          Util.redirect(deviceChallenge.href);
+          let deviceChallengeUrl = appendLoginHint(deviceChallenge.href, this.options?.settings?.get('identifier'));
+          Util.redirect(deviceChallengeUrl);
         }
+
+        const isAppLinkapproach = deviceChallenge?.challengeMethod === Enums.APP_LINK_CHALLENGE;
+        if (isAppLinkapproach) {
+          // launch the Okta Verify app
+          let deviceChallengeUrl = appendLoginHint(deviceChallenge.href, this.options?.settings?.get('identifier'));
+          Util.redirect(deviceChallengeUrl, window, true);
+        }
+
         // OKTA-350084
-        // For the universal link (iOS) approach,
+        // For the universal link (iOS) and app link (Android) approach,
         // we need to 1. launch the Okta Verify app
         // and 2. take the enduser to the next step right away
         // In Safari, when Okta Verify app is not installed, step 1 responds with error immediately,
@@ -50,7 +64,7 @@ export default View.extend({
           } else {
             appState.trigger('invokeAction', FORMS.LAUNCH_AUTHENTICATOR);
           }
-        }, isUVapproach ? UNIVERSAL_LINK_POST_DELAY : 0);
+        }, isUVapproach || isAppLinkapproach ? UNIVERSAL_LINK_POST_DELAY : 0);
       }
     }), '.okta-verify-container');
   },

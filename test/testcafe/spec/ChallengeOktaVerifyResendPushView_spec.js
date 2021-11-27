@@ -51,6 +51,12 @@ test
     const resendPushBtn = challengeOktaVerifyPushPageObject.getResendPushButton();
     await t.expect(resendPushBtn.value).contains('Resend push notification');
     await t.expect(resendPushBtn.hasClass('link-button-disabled')).notOk();
+
+    // Verify links
+    await t.expect(await challengeOktaVerifyPushPageObject.switchAuthenticatorLinkExists()).ok();
+    await t.expect(challengeOktaVerifyPushPageObject.getSwitchAuthenticatorLinkText()).eql('Verify with something else');
+    await t.expect(await challengeOktaVerifyPushPageObject.signoutLinkExists()).ok();
+    await t.expect(challengeOktaVerifyPushPageObject.getSignoutLinkText()).eql('Back to sign in');
   });
 
 test
@@ -101,7 +107,7 @@ test
     const pageTitle = challengeOktaVerifyPushPageObject.getFormTitle();
     await t.expect(pageTitle).contains('Get a push notification');
     const errorBox = challengeOktaVerifyPushPageObject.getErrorBox();
-    await t.expect(errorBox.innerText).contains('We received your response, but your organization requires biometrics. On a device that supports biometrics, enable biometrics for your account and try again.');
+    await t.expect(errorBox.innerText).contains('Your response was received, but your organization requires biometrics. Make sure you meet the following requirements, then try again:\n\nYour device supports biometrics\nOkta Verify is up-to-date\nIn Okta Verify, biometrics are enabled for your account');
     const errorTitle = challengeOktaVerifyPushPageObject.getErrorTitle();
     await t.expect(errorTitle.innerText).contains('Enable biometrics in Okta Verify');
     const resendPushBtn = challengeOktaVerifyPushPageObject.getResendPushButton();

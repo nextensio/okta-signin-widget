@@ -43,9 +43,9 @@ test
     await t.expect(enrollOnPremPage.userNameFieldExists()).eql(true);
     await t.expect(enrollOnPremPage.passcodeFieldExists()).eql(true);
 
-    // assert switch authenticator link shows up
-    await t.expect(await enrollOnPremPage.switchAuthenticatorLinkExists()).ok();
-    await t.expect(enrollOnPremPage.getSwitchAuthenticatorLinkText()).eql('Return to authenticator list');
+    // Verify links (switch authenticator link not present since there are no other authenticators available)
+    await t.expect(await enrollOnPremPage.switchAuthenticatorLinkExists()).notOk();
+    await t.expect(await enrollOnPremPage.signoutLinkExists()).ok();
 
     // fields are required
     await enrollOnPremPage.fillUserName('');
@@ -82,6 +82,6 @@ test
     await enrollOnPremPage.waitForErrorBox();
     const errorBox = enrollOnPremPage.getErrorBox();
     await t.expect(errorBox.innerText)
-      .contains('Wait for token to change, then enter the new tokencode.');
+      .contains('Pin accepted, Wait for token to change, then enter new passcode.');
     await t.expect(enrollOnPremPage.getPasscodeValue()).eql('');
   });

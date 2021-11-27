@@ -1,7 +1,7 @@
-/* eslint max-params:[2, 32], max-statements:[2, 45], camelcase:0, max-len:[2, 180] */
+/* eslint max-params:[2, 32], max-statements:[2, 46], camelcase:0, max-len:[2, 180] */
 import { _, $, internal } from 'okta';
 import { OAuthError } from '@okta/okta-auth-js';
-import createAuthClient from 'widget/createAuthClient';
+import getAuthClient from 'widget/getAuthClient';
 import Router from 'LoginRouter';
 import PrimaryAuthController from 'PrimaryAuthController';
 import AuthContainer from 'helpers/dom/AuthContainer';
@@ -23,6 +23,7 @@ import resUnauthenticated from 'helpers/xhr/UNAUTHENTICATED';
 import resUnauthorized from 'helpers/xhr/UNAUTHORIZED_ERROR';
 import resSecurityImage from 'helpers/xhr/security_image';
 import resSecurityImageFail from 'helpers/xhr/security_image_fail';
+import resSecurityImageNewUser from 'helpers/xhr/security_image_new_user';
 import PrimaryAuth from 'models/PrimaryAuth';
 import Q from 'q';
 import $sandbox from 'sandbox';
@@ -78,7 +79,7 @@ const typingPattern =
   '0,2.15,0,0,6,3210950388,1,95,-1,0,-1,-1,\
           0,-1,-1,9,86,44,0,-1,-1|4403,86|143,143|240,62|15,127|176,39|712,87';
 
-function setup(settings, requests, refreshState) {
+async function setup(settings, requests, refreshState) {
   settings || (settings = {});
 
   // To speed up the test suite, calls to debounce are
@@ -89,12 +90,21 @@ function setup(settings, requests, refreshState) {
     return debounce(fn, 0);
   });
 
+  // Footer uses slideToggle to animate the change. mock this method so everything happens synchronously
+  const slideToggle = $.prototype.slideToggle;
+  spyOn($.prototype, 'slideToggle').and.callFake(function(speed, easing, callback) {
+    slideToggle.call(this, 0, easing, callback);
+    Util.callAllTimeouts();
+  });
+
   const setNextResponse = Util.mockAjax(requests);
   const baseUrl = 'https://foo.com';
-  const authClient = createAuthClient(Object.assign({
-    issuer: baseUrl,
-    transformErrorXHR: LoginUtil.transformErrorXHR, headers: {}
-  }, settings.authParams));
+  const authClient = getAuthClient({
+    authParams: Object.assign({
+      issuer: baseUrl,
+      transformErrorXHR: LoginUtil.transformErrorXHR,
+    }, settings.authParams)
+  });
   const successSpy = jasmine.createSpy('success');
   const afterErrorHandler = jasmine.createSpy('afterErrorHandler');
   const router = new Router(
@@ -116,13 +126,14 @@ function setup(settings, requests, refreshState) {
   const beacon = new Beacon($sandbox);
 
   router.on('afterError', afterErrorHandler);
+  let test;
   if (refreshState) {
     const stateToken = 'dummy-token';
 
     setNextResponse(resUnauthenticated);
     router.refreshAuthState(stateToken);
     Util.mockJqueryCss();
-    return Expect.waitForPrimaryAuth({
+    test = await Expect.waitForPrimaryAuth({
       router: router,
       authContainer: authContainer,
       form: form,
@@ -135,7 +146,7 @@ function setup(settings, requests, refreshState) {
   } else {
     router.primaryAuth();
     Util.mockJqueryCss();
-    return Expect.waitForPrimaryAuth({
+    test = await Expect.waitForPrimaryAuth({
       router: router,
       authContainer: authContainer,
       form: form,
@@ -146,6 +157,9 @@ function setup(settings, requests, refreshState) {
       afterErrorHandler: afterErrorHandler,
     });
   }
+
+  Util.callAllTimeouts(); // to set focus from debounce
+  return test;
 }
 
 function setupUnauthenticated(settings, requests) {
@@ -185,7 +199,13 @@ function setupSocial(settings) {
     )
   ).then(function(test) {
     spyOn(window, 'open').and.callFake(function() {
-      test.oidcWindow = { closed: false, close: jasmine.createSpy() };
+      test.oidcWindow = { 
+        closed: false, 
+        close: jasmine.createSpy(),
+        location: {
+          assign: jasmine.createSpy()
+        }
+      };
       return test.oidcWindow;
     });
     return test;
@@ -401,6 +421,7 @@ Expect.describe('PrimaryAuth', function() {
       };
 
       return setup(options).then(function(test) {
+        Util.callAllTimeouts();
         const explain = test.form.usernameExplain();
 
         expect(explain.text()).toEqual('Custom Username Explain');
@@ -448,6 +469,9 @@ Expect.describe('PrimaryAuth', function() {
     itp('focuses on username field in browsers other than IE', function() {
       spyOn(BrowserFeatures, 'isIE').and.returnValue(false);
       return setup().then(function(test) {
+        // focus() is called by _applyMode_ before the view is added to DOM
+        // this would not work except for the fact that focus is wrapped in debounce() which uses setTimeout to delay the call
+        Util.callAllTimeouts();
         const $username = test.form.usernameField();
 
         // Focused element would be username DOM element
@@ -477,6 +501,10 @@ Expect.describe('PrimaryAuth', function() {
       });
     });
     itp('does not show a beacon if features.securityImage is false', function() {
+      // BaseLoginRouter will render twice if language bundles are not loaded:
+      // https://github.com/okta/okta-signin-widget/blob/master/src/util/BaseLoginRouter.js#L202
+      // This causes a race with loading beacon. We are not testing i18n, so we can mock language bundles as loaded
+      Util.mockBundles();
       return setup().then(function(test) {
         expect(test.beacon.beacon().length).toBe(0);
       });
@@ -531,7 +559,9 @@ Expect.describe('PrimaryAuth', function() {
         expect(test.form.helpFooter().attr('aria-controls')).toBe('help-links-container');
       });
     });
-    itp('sets aria-expanded attribute correctly when clicking help', function() {
+    // OKTA-407603 enable or move this test
+    // eslint-disable-next-line jasmine/no-disabled-tests
+    xit('sets aria-expanded attribute correctly when clicking help', function() {
       return setup().then(function(test) {
         expect(test.form.helpFooter().attr('aria-expanded')).toBe('false');
         test.form.helpFooter().click();
@@ -741,7 +771,7 @@ Expect.describe('PrimaryAuth', function() {
     });
     itp('toggles "focused-input" css class on focus in and focus out', function() {
       return setup().then(function(test) {
-        test.form.usernameField().focus();
+        test.form.usernameField().focusin();
         expect(test.form.usernameField()[0].parentElement).toHaveClass('focused-input');
         test.form.usernameField().focusout();
         expect(test.form.usernameField()[0].parentElement).not.toHaveClass('focused-input');
@@ -809,6 +839,32 @@ Expect.describe('PrimaryAuth', function() {
         jasmine.DEFAULT_TIMEOUT_INTERVAL = originalTimeout;
       });
     });
+    itp('sets username input aria-invalid="false" on init and clears on blur', function() {
+      return setup()
+        .then((test) => {
+          expect(test.form.usernameField()[0].getAttribute('aria-invalid')).toEqual('false');
+          test.form.usernameField().focusin();
+          expect(test.form.usernameField()[0].getAttribute('aria-invalid')).toEqual('false');
+          test.form.usernameField().focusout();
+          return test;
+        })
+        .then((test) => {
+          expect(test.form.usernameField()[0].getAttribute('aria-invalid')).toBeFalsy();
+        });
+    });
+    itp('sets password input aria-invalid="false" on init and clears on blur', function() {
+      return setup()
+        .then(function(test) {
+          expect(test.form.passwordField()[0].getAttribute('aria-invalid')).toEqual('false');
+          test.form.passwordField().focusin();
+          expect(test.form.passwordField()[0].getAttribute('aria-invalid')).toEqual('false');
+          test.form.passwordField().focusout();
+          return test;
+        })
+        .then((test) => {
+          expect(test.form.passwordField()[0].getAttribute('aria-invalid')).toBeFalsy();
+        });
+    });
     itp('show username validation error when username field is dirty', function() {
       return setup().then(function(test) {
         test.form.usernameField().focus();
@@ -825,9 +881,11 @@ Expect.describe('PrimaryAuth', function() {
     });
     itp('does not show username validation error when username field is not dirty', function() {
       return setup().then(function(test) {
-        test.form.usernameField().focus();
+        test.form.usernameField().focusin();
+        Util.callAllTimeouts();
         expect(test.form.usernameField()[0].parentElement).toHaveClass('focused-input');
         test.form.usernameField().focusout();
+        Util.callAllTimeouts(); // focus is wrapped in debounce() which uses setTimeout()
         expect(test.form.usernameField()[0].parentElement).not.toHaveClass('focused-input');
         spyOn(test.router.controller.model, 'validate');
         expect(test.router.controller.model.validate).not.toHaveBeenCalled();
@@ -835,7 +893,8 @@ Expect.describe('PrimaryAuth', function() {
     });
     itp('show password validation error when password field is dirty', function() {
       return setup().then(function(test) {
-        test.form.passwordField().focus();
+        test.form.passwordField().focusin();
+        Util.callAllTimeouts();
         test.form.setPassword('Abcd1234');
 
         const msg1 = test.router.controller.model.validateField('password');
@@ -851,12 +910,32 @@ Expect.describe('PrimaryAuth', function() {
     itp('does not show password validation error when password field is not dirty', function() {
       return setup({ username: 'abc' }).then(function(test) {
         spyOn(test.router.controller.model, 'validate');
-        test.form.passwordField().focus();
+        test.form.passwordField().focusin();
+        Util.callAllTimeouts();
         expect(test.form.passwordField()[0].parentElement).toHaveClass('focused-input');
         test.form.passwordField().focusout();
         expect(test.form.passwordField()[0].parentElement).not.toHaveClass('focused-input');
         expect(test.router.controller.model.validate).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  Expect.describe('Okta UA', function() {
+    itp('tracks Okta UA for widget in "x-okta-user-agent-extended"', function() {
+      return setup()
+        .then(function(test) {
+          Util.resetAjaxRequests();
+          test.form.setUsername('testuser');
+          test.form.setPassword('pass');
+          test.setNextResponse(resSuccess);
+          test.form.submit();
+          return Expect.waitForSpyCall(test.successSpy, test);
+        })
+        .then(function() {
+          expect(Util.numAjaxRequests()).toBe(1);
+          const ajaxArgs = Util.getAjaxRequest(0);
+          expect(ajaxArgs.requestHeaders['x-okta-user-agent-extended'].indexOf('okta-signin-widget-9.9.99')).toBeGreaterThan(-1);
+        });
     });
   });
 
@@ -1529,6 +1608,23 @@ Expect.describe('PrimaryAuth', function() {
             expect(test.beacon.beacon().length).toBe(0);
           });
       });
+      it('hides beacon-loading animation when user lockout message is displayed(no security image and selfServiceUnlock is off)', function() {
+        return setup()
+          .then(function(test) {
+            Q.stopUnhandledRejectionTracking();
+            test.setNextResponse(resLockedOut);
+            test.form.setUsername('testuser');
+            test.form.setPassword('pass');
+            test.form.submit();
+            return Expect.waitForFormError(test.form, test);
+          })
+          .then(function(test) {
+            expect(test.form.hasErrors()).toBe(true);
+            expect(test.form.errorMessage()).toBe('Your account is locked. Please contact your administrator.');
+            expect(test.beacon.isLoadingBeacon()).toBe(false);
+            expect(test.beacon.beacon().length).toBe(0);
+          });
+      });
       itp('does not show beacon-loading animation on CORS error (no security image)', function() {
         return setup()
           .then(function(test) {
@@ -1660,27 +1756,54 @@ Expect.describe('PrimaryAuth', function() {
           expect($.qtip.prototype.toggle.calls.argsFor(0)).toEqual(jasmine.objectContaining({ 0: true }));
         });
     });
-    itp('show anti-phishing message if security image become visible', function() {
+    
+    itp('show anti-phishing message when security image is new user', function() {
       return setup({ features: { securityImage: true } })
         .then(function(test) {
           spyOn($.qtip.prototype, 'toggle').and.callThrough();
-          test.setNextResponse(resSecurityImageFail);
+          test.setNextResponse(resSecurityImageNewUser);
           test.form.setUsername('testuser');
-          return Expect.waitForSpyCall($.qtip.prototype.toggle, test);
+          return Expect.waitForSecurityImageTooltip(true, test);
         })
         .then(function(test) {
           expect($.qtip.prototype.toggle.calls.argsFor(0)).toEqual(jasmine.objectContaining({ 0: true }));
           $.qtip.prototype.toggle.calls.reset();
           test.form.securityBeaconContainer().hide();
           $(window).trigger('resize');
-          return Expect.waitForSpyCall($.qtip.prototype.toggle, test);
+          return Expect.waitForSecurityImageTooltip(false, test);
         })
         .then(function(test) {
           expect($.qtip.prototype.toggle.calls.argsFor(0)).toEqual(jasmine.objectContaining({ 0: false }));
           $.qtip.prototype.toggle.calls.reset();
           test.form.securityBeaconContainer().show();
           $(window).trigger('resize');
-          return Expect.waitForSpyCall($.qtip.prototype.toggle, test);
+          return Expect.waitForSecurityImageTooltip(true, test);
+        })
+        .then(function() {
+          expect($.qtip.prototype.toggle.calls.argsFor(0)).toEqual(jasmine.objectContaining({ 0: true }));
+        });
+    });
+    itp('show anti-phishing message if security image become visible', function() {
+      return setup({ features: { securityImage: true } })
+        .then(function(test) {
+          spyOn($.qtip.prototype, 'toggle').and.callThrough();
+          test.setNextResponse(resSecurityImageFail);
+          test.form.setUsername('testuser');
+          return Expect.waitForSecurityImageTooltip(true, test);
+        })
+        .then(function(test) {
+          expect($.qtip.prototype.toggle.calls.argsFor(0)).toEqual(jasmine.objectContaining({ 0: true }));
+          $.qtip.prototype.toggle.calls.reset();
+          test.form.securityBeaconContainer().hide();
+          $(window).trigger('resize');
+          return Expect.waitForSecurityImageTooltip(false, test);
+        })
+        .then(function(test) {
+          expect($.qtip.prototype.toggle.calls.argsFor(0)).toEqual(jasmine.objectContaining({ 0: false }));
+          $.qtip.prototype.toggle.calls.reset();
+          test.form.securityBeaconContainer().show();
+          $(window).trigger('resize');
+          return Expect.waitForSecurityImageTooltip(true, test);
         })
         .then(function() {
           expect($.qtip.prototype.toggle.calls.argsFor(0)).toEqual(jasmine.objectContaining({ 0: true }));
@@ -2244,6 +2367,35 @@ Expect.describe('PrimaryAuth', function() {
           expect(test.form.errorMessage()).toBe('Your account is locked. Please contact your administrator.');
         });
     });
+    itp('triggers afterError event if authClient returns with LOCKED_OUT response and selfServiceUnlock is off', function() {
+      return setup()
+        .then(function(test) {
+          test.form.setUsername('testuser');
+          test.form.setPassword('pass');
+          test.setNextResponse(resLockedOut);
+          test.form.submit();
+          return Expect.waitForSpyCall(test.afterErrorHandler, test);
+        })
+        .then(function(test) {
+          expect(test.afterErrorHandler).toHaveBeenCalledTimes(1);
+          expect(test.afterErrorHandler.calls.allArgs()[0]).toEqual([
+            {
+              controller: 'primary-auth',
+            },
+            {
+              name: 'AuthApiError',
+              message: 'Your account is locked. Please contact your administrator.',
+              xhr: {
+                responseJSON: {
+                  errorCauses: [],
+                  errorSummary: 'Your account is locked. Please contact your administrator.',
+                  errorCode: 'E0000119'
+                }
+              }
+            },
+          ]);
+        });
+    });
     itp('redirects to "unlock" if authClient returns with LOCKED_OUT response and selfServiceUnlock is on', function() {
       return setup({ 'features.selfServiceUnlock': true })
         .then(function(test) {
@@ -2476,7 +2628,7 @@ Expect.describe('PrimaryAuth', function() {
     itp('does not show the divider or buttons if no idps are passed in', function() {
       return setup().then(function(test) {
         expect(test.form.hasSocialAuthDivider()).toBe(false);
-        expect(test.form.socialAuthButtons()).toHaveLength(0);
+        expect(test.form.socialAuthButtons().length).toEqual(0);
       });
     });
     itp('shows a divider and a button for each idp that is passed in', function() {
@@ -2495,9 +2647,9 @@ Expect.describe('PrimaryAuth', function() {
 
       return setup(settings).then(function(test) {
         expect(test.form.hasSocialAuthDivider()).toBe(true);
-        expect(test.form.socialAuthButtons()).toHaveLength(2);
-        expect(test.form.facebookButton()).toHaveLength(1);
-        expect(test.form.googleButton()).toHaveLength(1);
+        expect(test.form.socialAuthButtons().length).toEqual(2);
+        expect(test.form.facebookButton().length).toEqual(1);
+        expect(test.form.googleButton().length).toEqual(1);
       });
     });
     itp('shows idps in the order specified', function() {
@@ -2529,11 +2681,11 @@ Expect.describe('PrimaryAuth', function() {
       return setup(settings).then(function(test) {
         const buttons = test.form.socialAuthButtons();
 
-        expect(buttons.eq(0)).toHaveClass('social-auth-linkedin-button');
-        expect(buttons.eq(1)).toHaveClass('social-auth-facebook-button');
-        expect(buttons.eq(2)).toHaveClass('social-auth-google-button');
-        expect(buttons.eq(3)).toHaveClass('social-auth-apple-button');
-        expect(buttons.eq(4)).toHaveClass('social-auth-microsoft-button');
+        expect(buttons.eq(0).attr('class')).toContain('social-auth-linkedin-button');
+        expect(buttons.eq(1).attr('class')).toContain('social-auth-facebook-button');
+        expect(buttons.eq(2).attr('class')).toContain('social-auth-google-button');
+        expect(buttons.eq(3).attr('class')).toContain('social-auth-apple-button');
+        expect(buttons.eq(4).attr('class')).toContain('social-auth-microsoft-button');
       });
     });
     itp('optionally adds a class for idp buttons', function() {
@@ -2559,20 +2711,55 @@ Expect.describe('PrimaryAuth', function() {
       return setup(settings).then(function(test) {
         const buttons = test.form.socialAuthButtons();
 
-        expect(buttons.eq(0)).toHaveClass('social-auth-google-button');
-        expect(buttons.eq(0)).not.toHaveClass('social-auth-facebook-button');
-        expect(buttons.eq(0)).toHaveClass('example-class');
-        expect(buttons.eq(0)).not.toHaveClass('other-class');
+        expect(buttons.eq(0).attr('class')).toContain('social-auth-google-button');
+        expect(buttons.eq(0).attr('class')).not.toContain('social-auth-facebook-button');
+        expect(buttons.eq(0).attr('class')).toContain('example-class');
+        expect(buttons.eq(0).attr('class')).not.toContain('other-class');
 
-        expect(buttons.eq(1)).not.toHaveClass('social-auth-google-button');
-        expect(buttons.eq(1)).toHaveClass('social-auth-facebook-button');
-        expect(buttons.eq(1)).not.toHaveClass('example-class');
-        expect(buttons.eq(1)).not.toHaveClass('other-class');
+        expect(buttons.eq(1).attr('class')).not.toContain('social-auth-google-button');
+        expect(buttons.eq(1).attr('class')).toContain('social-auth-facebook-button');
+        expect(buttons.eq(1).attr('class')).not.toContain('example-class');
+        expect(buttons.eq(1).attr('class')).not.toContain('other-class');
 
-        expect(buttons.eq(2)).not.toHaveClass('social-auth-google-button');
-        expect(buttons.eq(2)).not.toHaveClass('social-auth-facebook-button');
-        expect(buttons.eq(2)).not.toHaveClass('example-class');
-        expect(buttons.eq(2)).toHaveClass('other-class');
+        expect(buttons.eq(2).attr('class')).not.toContain('social-auth-google-button');
+        expect(buttons.eq(2).attr('class')).not.toContain('social-auth-facebook-button');
+        expect(buttons.eq(2).attr('class')).not.toContain('example-class');
+        expect(buttons.eq(2).attr('class')).toContain('other-class');
+      });
+    });
+    itp('displays styled buttons for supported types', function() {
+      const idpTypes = [
+        'FACEBOOK',
+        'GOOGLE',
+        'LINKEDIN',
+        'MICROSOFT',
+        'APPLE',
+        'GITHUB',
+        'GITLAB',
+        'YAHOO',
+        'LINE',
+        'PAYPAL',
+        'PAYPAL_SANDBOX',
+        'SALESFORCE',
+        'AMAZON',
+        'YAHOOJP',
+        'DISCORD',
+        'ADOBE',
+        'ORCID',
+        'SPOTIFY',
+        'XERO',
+        'QUICKBOOKS',
+      ];
+      const settings = {
+        idps: idpTypes.map(t => ({ type: t, id: '0oaDUMMY' }))
+      };
+
+      return setup(settings).then(function(test) {
+        const buttons = test.form.socialAuthButtons();
+        expect(buttons.length).toBe(idpTypes.length);
+        for (const [i, type] of idpTypes.entries()) {
+          expect(buttons.eq(i).attr('class')).toContain(`social-auth-${type.toLowerCase()}-button`);
+        }
       });
     });
     itp('displays generic idp buttons for unknown types', function() {
@@ -2588,14 +2775,14 @@ Expect.describe('PrimaryAuth', function() {
       return setup(settings).then(function(test) {
         const buttons = test.form.socialAuthButtons();
 
-        expect(buttons.size()).toBe(1);
-        expect(buttons.eq(0)).not.toHaveClass('social-auth-tweeter-button');
-        expect(buttons.eq(0)).not.toHaveClass('social-auth-linkedin-button');
-        expect(buttons.eq(0)).not.toHaveClass('social-auth-facebook-button');
-        expect(buttons.eq(0)).not.toHaveClass('social-auth-google-button');
-        expect(buttons.eq(0)).not.toHaveClass('social-auth-apple-button');
-        expect(buttons.eq(0)).not.toHaveClass('social-auth-microsoft-button');
-        expect(buttons.eq(0)).toHaveClass('social-auth-general-idp-button');
+        expect(buttons.length).toBe(1);
+        expect(buttons.eq(0).attr('class')).not.toContain('social-auth-tweeter-button');
+        expect(buttons.eq(0).attr('class')).not.toContain('social-auth-linkedin-button');
+        expect(buttons.eq(0).attr('class')).not.toContain('social-auth-facebook-button');
+        expect(buttons.eq(0).attr('class')).not.toContain('social-auth-google-button');
+        expect(buttons.eq(0).attr('class')).not.toContain('social-auth-apple-button');
+        expect(buttons.eq(0).attr('class')).not.toContain('social-auth-microsoft-button');
+        expect(buttons.eq(0).attr('class')).toContain('social-auth-general-idp-button');
       });
     });
     itp('type is optional for generic idp buttons', function() {
@@ -2610,13 +2797,13 @@ Expect.describe('PrimaryAuth', function() {
       return setup(settings).then(function(test) {
         const buttons = test.form.socialAuthButtons();
 
-        expect(buttons.size()).toBe(1);
-        expect(buttons.eq(0)).not.toHaveClass('social-auth-linkedin-button');
-        expect(buttons.eq(0)).not.toHaveClass('social-auth-facebook-button');
-        expect(buttons.eq(0)).not.toHaveClass('social-auth-google-button');
-        expect(buttons.eq(0)).not.toHaveClass('social-auth-apple-button');
-        expect(buttons.eq(0)).not.toHaveClass('social-auth-microsoft-button');
-        expect(buttons.eq(0)).toHaveClass('social-auth-general-idp-button');
+        expect(buttons.length).toBe(1);
+        expect(buttons.eq(0).attr('class')).not.toContain('social-auth-linkedin-button');
+        expect(buttons.eq(0).attr('class')).not.toContain('social-auth-facebook-button');
+        expect(buttons.eq(0).attr('class')).not.toContain('social-auth-google-button');
+        expect(buttons.eq(0).attr('class')).not.toContain('social-auth-apple-button');
+        expect(buttons.eq(0).attr('class')).not.toContain('social-auth-microsoft-button');
+        expect(buttons.eq(0).attr('class')).toContain('social-auth-general-idp-button');
       });
     });
     itp('sets the text for generic idp buttons', function() {
@@ -2632,7 +2819,7 @@ Expect.describe('PrimaryAuth', function() {
       return setup(settings).then(function(test) {
         const buttons = test.form.socialAuthButtons();
 
-        expect(buttons.eq(0)).toHaveText('Not default text');
+        expect(buttons.eq(0).text()).toEqual('Not default text');
       });
     });
     itp('gives default text if no text provided for generic idp buttons', function() {
@@ -2647,7 +2834,7 @@ Expect.describe('PrimaryAuth', function() {
       return setup(settings).then(function(test) {
         const buttons = test.form.socialAuthButtons();
 
-        expect(buttons.eq(0)).toHaveText('{ Please provide a text value }');
+        expect(buttons.eq(0).text()).toEqual('{ Please provide a text value }');
       });
     });
     itp('shows the buttons below the primary auth form by default', function() {
@@ -2747,28 +2934,30 @@ Expect.describe('PrimaryAuth', function() {
       return setupSocial()
         .then(function(test) {
           test.form.facebookButton().click();
-          return Expect.waitForSpyCall(window.open);
+          return Promise.all([test, Expect.waitForSpyCall(test.oidcWindow.location.assign)]);
         })
-        .then(function() {
+        .then(function([test]) {
           expect(window.open.calls.count()).toBe(1);
           expect(window.open).toHaveBeenCalledWith(
-            'https://foo.com/oauth2/v1/authorize?' +
-              'client_id=someClientId&' +
-              'display=popup&' +
-              'idp=0oaidiw9udOSceD1234&' +
-              'nonce=' +
-              OIDC_NONCE +
-              '&' +
-              'redirect_uri=https%3A%2F%2F0.0.0.0%3A9999&' +
-              'response_mode=okta_post_message&' +
-              'response_type=id_token&' +
-              'state=' +
-              OIDC_STATE +
-              '&' +
-              'scope=openid%20email%20profile',
+            '/',
             'External Identity Provider User Authentication',
             'toolbar=no, scrollbars=yes, resizable=yes, top=100, left=500, width=600, height=600'
           );
+          const expectedRedirectUri = 'https://foo.com/oauth2/v1/authorize?' +
+          'client_id=someClientId&' +
+          'display=popup&' +
+          'idp=0oaidiw9udOSceD1234&' +
+          'nonce=' +
+          OIDC_NONCE +
+          '&' +
+          'redirect_uri=https%3A%2F%2F0.0.0.0%3A9999&' +
+          'response_mode=okta_post_message&' +
+          'response_type=id_token&' +
+          'state=' +
+          OIDC_STATE +
+          '&' +
+          'scope=openid%20email%20profile';
+          expect(test.oidcWindow.location.assign).toHaveBeenCalledWith(expectedRedirectUri);
         });
     });
     itp('navigate to "/sso/idp/:id" at none OIDC mode when an idp button is clicked', function() {
@@ -2790,28 +2979,30 @@ Expect.describe('PrimaryAuth', function() {
       return setupSocial({ 'authParams.responseType': 'token' })
         .then(function(test) {
           test.form.facebookButton().click();
-          return Expect.waitForSpyCall(window.open);
+          return Promise.all([test, Expect.waitForSpyCall(test.oidcWindow.location.assign)]);
         })
-        .then(function() {
+        .then(function([test]) {
+          const expectedRedirectUri = 'https://foo.com/oauth2/v1/authorize?' +
+          'client_id=someClientId&' +
+          'display=popup&' +
+          'idp=0oaidiw9udOSceD1234&' +
+          'nonce=' +
+          OIDC_NONCE +
+          '&' +
+          'redirect_uri=https%3A%2F%2F0.0.0.0%3A9999&' +
+          'response_mode=okta_post_message&' +
+          'response_type=token&' +
+          'state=' +
+          OIDC_STATE +
+          '&' +
+          'scope=openid%20email%20profile';
           expect(window.open.calls.count()).toBe(1);
           expect(window.open).toHaveBeenCalledWith(
-            'https://foo.com/oauth2/v1/authorize?' +
-              'client_id=someClientId&' +
-              'display=popup&' +
-              'idp=0oaidiw9udOSceD1234&' +
-              'nonce=' +
-              OIDC_NONCE +
-              '&' +
-              'redirect_uri=https%3A%2F%2F0.0.0.0%3A9999&' +
-              'response_mode=okta_post_message&' +
-              'response_type=token&' +
-              'state=' +
-              OIDC_STATE +
-              '&' +
-              'scope=openid%20email%20profile',
+            '/',
             'External Identity Provider User Authentication',
             'toolbar=no, scrollbars=yes, resizable=yes, top=100, left=500, width=600, height=600'
           );
+          expect(test.oidcWindow.location.assign).toHaveBeenCalledWith(expectedRedirectUri);
         });
     });
     itp(
@@ -2820,28 +3011,30 @@ Expect.describe('PrimaryAuth', function() {
         return setupSocial({ 'authParams.responseType': ['id_token', 'token'] })
           .then(function(test) {
             test.form.facebookButton().click();
-            return Expect.waitForSpyCall(window.open);
+            return Promise.all([test, Expect.waitForSpyCall(window.open)]);
           })
-          .then(function() {
+          .then(function([test]) {
+            const expectedRedirectUri = 'https://foo.com/oauth2/v1/authorize?' +
+            'client_id=someClientId&' +
+            'display=popup&' +
+            'idp=0oaidiw9udOSceD1234&' +
+            'nonce=' +
+            OIDC_NONCE +
+            '&' +
+            'redirect_uri=https%3A%2F%2F0.0.0.0%3A9999&' +
+            'response_mode=okta_post_message&' +
+            'response_type=id_token%20token&' +
+            'state=' +
+            OIDC_STATE +
+            '&' +
+            'scope=openid%20email%20profile';
             expect(window.open.calls.count()).toBe(1);
             expect(window.open).toHaveBeenCalledWith(
-              'https://foo.com/oauth2/v1/authorize?' +
-                'client_id=someClientId&' +
-                'display=popup&' +
-                'idp=0oaidiw9udOSceD1234&' +
-                'nonce=' +
-                OIDC_NONCE +
-                '&' +
-                'redirect_uri=https%3A%2F%2F0.0.0.0%3A9999&' +
-                'response_mode=okta_post_message&' +
-                'response_type=id_token%20token&' +
-                'state=' +
-                OIDC_STATE +
-                '&' +
-                'scope=openid%20email%20profile',
+              '/',
               'External Identity Provider User Authentication',
               'toolbar=no, scrollbars=yes, resizable=yes, top=100, left=500, width=600, height=600'
             );
+            expect(test.oidcWindow.location.assign).toHaveBeenCalledWith(expectedRedirectUri);
           });
       }
     );
@@ -2877,7 +3070,7 @@ Expect.describe('PrimaryAuth', function() {
             const data = test.successSpy.calls.argsFor(0)[0];
 
             expect(data.status).toBe('SUCCESS');
-            expect(data.tokens.idToken.value).toBe(VALID_ID_TOKEN);
+            expect(data.tokens.idToken.idToken).toBe(VALID_ID_TOKEN);
             expect(data.tokens.idToken.claims).toEqual({
               amr: ['pwd'],
               aud: 'someClientId',
@@ -2938,9 +3131,9 @@ Expect.describe('PrimaryAuth', function() {
           const data = test.successSpy.calls.argsFor(0)[0];
 
           expect(data.status).toBe('SUCCESS');
-          expect(data.tokens.idToken.value).toBe(VALID_ID_TOKEN);
+          expect(data.tokens.idToken.idToken).toBe(VALID_ID_TOKEN);
 
-          expect(data.tokens.accessToken.value).toBe(VALID_ACCESS_TOKEN);
+          expect(data.tokens.accessToken.accessToken).toBe(VALID_ACCESS_TOKEN);
           expect(data.tokens.accessToken.scopes).toEqual(['openid', 'email', 'profile']);
           expect(data.tokens.accessToken.tokenType).toBe('Bearer');
         })

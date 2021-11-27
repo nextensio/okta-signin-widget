@@ -35,7 +35,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
             method: 'POST',
             rel: ['create-form'],
             accepts: 'application/vnd.okta.v1+json',
-            action: jasmine.any(Function),
+            action: expect.any(Function),
             value: [
               {
                 name: 'userProfile',
@@ -53,7 +53,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
                     },
                     {
                       name: 'email',
-                      label: 'Primary email',
+                      label: 'Email',
                       required: true,
                     },
                   ],
@@ -71,19 +71,22 @@ describe('v2/ion/uiSchemaTransformer', function() {
                 label: 'Last name',
                 required: true,
                 'label-top': true,
+                'data-se': 'o-form-fieldset-userProfile.lastName',
                 type: 'text',
               },
               {
                 name: 'userProfile.firstName',
                 label: 'First name',
                 'label-top': true,
+                'data-se': 'o-form-fieldset-userProfile.firstName',
                 required: true,
                 type: 'text',
               },
               {
                 name: 'userProfile.email',
-                label: 'Primary email',
+                label: 'Email',
                 'label-top': true,
+                'data-se': 'o-form-fieldset-userProfile.email',
                 required: true,
                 type: 'text',
               },
@@ -95,7 +98,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
             rel: ['create-form'],
             accepts: 'application/vnd.okta.v1+json',
             method: 'POST',
-            action: jasmine.any(Function),
+            action: expect.any(Function),
             value: [
               {
                 name: 'identifier',
@@ -112,6 +115,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
                 name: 'identifier',
                 label: 'identifier',
                 'label-top': true,
+                'data-se': 'o-form-fieldset-identifier',
                 type: 'text',
               },
             ],
@@ -143,7 +147,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
             rel: ['create-form'],
             accepts: 'application/vnd.okta.v1+json',
             method: 'POST',
-            action: jasmine.any(Function),
+            action: expect.any(Function),
             value: [
               {
                 type: 'object',
@@ -171,6 +175,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
                 name: 'credentials.passcode',
                 label: 'Enter code',
                 'label-top': true,
+                'data-se': 'o-form-fieldset-credentials.passcode',
                 type: 'text',
               },
             ],
@@ -182,14 +187,14 @@ describe('v2/ion/uiSchemaTransformer', function() {
             method: 'POST',
             rel: ['create-form'],
             accepts: 'application/vnd.okta.v1+json',
-            action: jasmine.any(Function),
+            action: expect.any(Function),
             value: [
               {
                 name: 'authenticator',
                 type: 'object',
                 options: [
                   {
-                    label: 'Primary Email Address',
+                    label: 'Email',
                     value: {
                       form: {
                         value: [
@@ -225,9 +230,10 @@ describe('v2/ion/uiSchemaTransformer', function() {
                 name: 'authenticator',
                 type: 'authenticatorVerifySelect',
                 'label-top': true,
+                'data-se': 'o-form-fieldset-authenticator',
                 options: [
                   {
-                    label: 'Primary Email Address',
+                    label: 'Email',
                     value: {
                       id: 'aut1bospdDFs7q3vc0g4',
                     },
@@ -259,7 +265,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
             rel: ['create-form'],
             accepts: 'application/vnd.okta.v1+json',
             method: 'POST',
-            action: jasmine.any(Function),
+            action: expect.any(Function),
             value: [
               {
                 name: 'authenticator',
@@ -645,7 +651,39 @@ describe('v2/ion/uiSchemaTransformer', function() {
                           type: 'otp'
                         }
                       ]
-                    }
+                    },
+                  },
+                  {
+                    label: 'YubiKey Authenticator',
+                    value: {
+                      form: {
+                        value: [
+                          {
+                            mutable: false,
+                            name: 'id',
+                            required: true,
+                            value: 'aut10faWWbNaNWBaH0g4',
+                          },
+                          {
+                            mutable: false,
+                            name: 'methodType',
+                            required: false,
+                            value: 'otp',
+                          },
+                        ],
+                      },
+                    },
+                    relatesTo: {
+                      displayName: 'YubiKey Authenticator',
+                      key: 'yubikey_token',
+                      id: 'aut10faWWbNaNWBaH0g4',
+                      type: 'security_key',
+                      methods: [
+                        {
+                          type: 'otp'
+                        }
+                      ]
+                    },
                   }
                 ]
               },
@@ -657,6 +695,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
                 type: 'authenticatorEnrollSelect',
                 required: true,
                 'label-top': true,
+                'data-se': 'o-form-fieldset-authenticator',
                 options: [
                   {
                     label: 'Okta Password',
@@ -756,6 +795,14 @@ describe('v2/ion/uiSchemaTransformer', function() {
                     authenticatorKey: 'symantec_vip',
                     relatesTo: XHRAuthenticatorEnrollSelectAuthenticators.authenticators.value[11]
                   },
+                  {
+                    label: 'YubiKey Authenticator',
+                    value: {
+                      id: 'aut10faWWbNaNWBaH0g4',
+                    },
+                    authenticatorKey: 'yubikey_token',
+                    relatesTo: XHRAuthenticatorEnrollSelectAuthenticators.authenticators.value[12]
+                  },
                 ]
               }
             ]
@@ -782,7 +829,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
         user: XHRAuthenticatorEnrollDataPhone.user.value,
         remediations: [
           Object.assign({}, XHRAuthenticatorEnrollDataPhone.remediation.value[0], {
-            action: jasmine.any(Function),
+            action: expect.any(Function),
             uiSchema: [
               {
                 name: 'authenticator.id',
@@ -791,6 +838,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
                 visible: false,
                 required: true,
                 'label-top': true,
+                'data-se': 'o-form-fieldset-authenticator.id',
                 type: 'text',
               },
               {
@@ -808,6 +856,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
                   },
                 ],
                 'label-top': true,
+                'data-se': 'o-form-fieldset-authenticator.methodType',
                 type: 'radio',
               },
               {
@@ -816,18 +865,20 @@ describe('v2/ion/uiSchemaTransformer', function() {
                 required: true,
                 type: 'text',
                 'label-top': true,
+                'data-se': 'o-form-fieldset-authenticator.phoneNumber',
               },
             ],
             relatesTo: XHRAuthenticatorEnrollDataPhone.currentAuthenticator,
           }),
           Object.assign({}, XHRAuthenticatorEnrollSecurityQuestion.remediation.value[1], {
-            action: jasmine.any(Function),
+            action: expect.any(Function),
             uiSchema: [
               {
                 name: 'authenticator',
                 type: 'authenticatorEnrollSelect',
                 required: true,
                 'label-top': true,
+                'data-se': 'o-form-fieldset-authenticator',
                 options: [
                   {
                     label: 'Okta Password',
@@ -1011,7 +1062,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
         user: XHRAuthenticatorEnrollSecurityQuestion.user.value,
         remediations: [
           Object.assign(XHRAuthenticatorEnrollSecurityQuestion.remediation.value[0], {
-            action: jasmine.any(Function),
+            action: expect.any(Function),
             uiSchema: [
               {
                 name: 'sub_schema_local_credentials',
@@ -1028,6 +1079,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
                   },
                 ],
                 'label-top': true,
+                'data-se': 'o-form-fieldset-credentials',
                 optionsUiSchemas: [
                   [
                     {
@@ -1041,6 +1093,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
                         'favorite_vacation_location': 'Where did you go for your favorite vacation?',
                       },
                       'label-top': true,
+                      'data-se': 'o-form-fieldset-credentials.questionKey',
                       wide: true,
                     },
                     {
@@ -1049,6 +1102,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
                       required: true,
                       secret: true,
                       'label-top': true,
+                      'data-se': 'o-form-fieldset-credentials.answer',
                       type: 'password',
                       params: {
                         showPasswordToggle: true,
@@ -1062,6 +1116,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
                       value: 'custom',
                       mutable: false,
                       'label-top': true,
+                      'data-se': 'o-form-fieldset-credentials.questionKey',
                       type: 'text',
                     },
                     {
@@ -1069,6 +1124,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
                       label: 'Create a security question',
                       required: true,
                       'label-top': true,
+                      'data-se': 'o-form-fieldset-credentials.question',
                       type: 'text',
                     },
                     {
@@ -1077,6 +1133,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
                       required: true,
                       secret: true,
                       'label-top': true,
+                      'data-se': 'o-form-fieldset-credentials.answer',
                       type: 'password',
                       params: {
                         showPasswordToggle: true,
@@ -1090,13 +1147,14 @@ describe('v2/ion/uiSchemaTransformer', function() {
             relatesTo: XHRAuthenticatorEnrollSecurityQuestion.currentAuthenticator,
           }),
           Object.assign(XHRAuthenticatorEnrollSecurityQuestion.remediation.value[1], {
-            action: jasmine.any(Function),
+            action: expect.any(Function),
             uiSchema: [
               {
                 name: 'authenticator',
                 type: 'authenticatorEnrollSelect',
                 required: true,
                 'label-top': true,
+                'data-se': 'o-form-fieldset-authenticator',
                 options: [
                   {
                     label: 'Okta Password',
@@ -1286,7 +1344,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
             rel: ['create-form'],
             accepts: 'application/vnd.okta.v1+json',
             method: 'POST',
-            action: jasmine.any(Function),
+            action: expect.any(Function),
             value: [
               {
                 name: 'identifier',
@@ -1300,7 +1358,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
               {
                 name: 'stateHandle',
                 required: true,
-                value: jasmine.any(String),
+                value: expect.any(String),
                 visible: false,
                 mutable: false,
               },
@@ -1311,6 +1369,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
                 label: 'Username',
                 type: 'text',
                 'label-top': true,
+                'data-se': 'o-form-fieldset-identifier',
               },
               {
                 name: 'rememberMe',
@@ -1320,6 +1379,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
                 modelType: 'boolean',
                 required: false,
                 'label-top': true,
+                'data-se': 'o-form-fieldset-rememberMe',
               },
             ],
           },
@@ -1329,12 +1389,12 @@ describe('v2/ion/uiSchemaTransformer', function() {
             rel: ['create-form'],
             accepts: 'application/vnd.okta.v1+json',
             method: 'POST',
-            action: jasmine.any(Function),
+            action: expect.any(Function),
             value: [
               {
                 name: 'stateHandle',
                 required: true,
-                value: jasmine.any(String),
+                value: expect.any(String),
                 visible: false,
                 mutable: false,
               },
@@ -1357,6 +1417,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
         mutable: false,
         visible: false,
         'label-top': true,
+        'data-se': 'o-form-fieldset-authenticator.id',
         type: 'text'
       }, {
         name: 'authenticator.channel',
@@ -1374,17 +1435,15 @@ describe('v2/ion/uiSchemaTransformer', function() {
         }],
         value: 'qrcode',
         'label-top': true,
+        'data-se': 'o-form-fieldset-authenticator.channel',
         type: 'radio'
       }]);
     });
   });
 
-  it('sets showPasswordToggle to true if features.showPasswordToggleOnSignInPage is true', done => {
+  it('sets showPasswordToggle to true by default', done => {
     testContext.settings = new Settings({
       baseUrl: 'http://localhost:3000',
-      features: {
-        showPasswordToggleOnSignInPage: true,
-      }
     });
 
     MockUtil.mockIntrospect(done, XHRIdentifyWithPasswordResponse, idxResp => {
@@ -1396,7 +1455,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
           rel: ['create-form'],
           accepts: 'application/vnd.okta.v1+json',
           method: 'POST',
-          action: jasmine.any(Function),
+          action: expect.any(Function),
           value: [
             {
               name: 'identifier',
@@ -1425,7 +1484,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
             {
               name: 'stateHandle',
               required: true,
-              value: jasmine.any(String),
+              value: expect.any(String),
               visible: false,
               mutable: false,
             },
@@ -1436,10 +1495,12 @@ describe('v2/ion/uiSchemaTransformer', function() {
               label: 'Username',
               type: 'text',
               'label-top': true,
+              'data-se': 'o-form-fieldset-identifier',
             },
             {
               'label': 'Password',
               'label-top': true,
+              'data-se': 'o-form-fieldset-credentials.passcode',
               'name': 'credentials.passcode',
               'params':  {
                 'showPasswordToggle': true,
@@ -1455,12 +1516,98 @@ describe('v2/ion/uiSchemaTransformer', function() {
               modelType: 'boolean',
               required: false,
               'label-top': true,
+              'data-se': 'o-form-fieldset-rememberMe',
             },
           ],
         },
       );
     });
   });
+
+  it('sets showPasswordToggle to false if "features.showPasswordToggleOnSignInPage" is false', done => {
+    testContext.settings = new Settings({
+      baseUrl: 'http://localhost:3000',
+      'features.showPasswordToggleOnSignInPage': false,
+    });
+
+    MockUtil.mockIntrospect(done, XHRIdentifyWithPasswordResponse, idxResp => {
+      const result = _.compose(uiSchemaTransformer.bind(null, testContext.settings), responseTransformer.bind(null, testContext.settings))(idxResp);
+      expect(result.remediations[0]).toEqual(
+        {
+          name: 'identify',
+          href: 'http://localhost:3000/idp/idx/identify',
+          rel: ['create-form'],
+          accepts: 'application/vnd.okta.v1+json',
+          method: 'POST',
+          action: expect.any(Function),
+          value: [
+            {
+              name: 'identifier',
+              label: 'Username',
+            },
+            {
+              'form':  {
+                'value': [
+                  {
+                    'label': 'Password',
+                    'name': 'passcode',
+                    'secret': true,
+                  },
+                ],
+              },
+              'name': 'credentials',
+              'required': true,
+              'type': 'object',
+            },
+
+            {
+              name: 'rememberMe',
+              label: 'Keep me signed in',
+              type: 'boolean',
+            },
+            {
+              name: 'stateHandle',
+              required: true,
+              value: expect.any(String),
+              visible: false,
+              mutable: false,
+            },
+          ],
+          uiSchema: [
+            {
+              name: 'identifier',
+              label: 'Username',
+              type: 'text',
+              'label-top': true,
+              'data-se': 'o-form-fieldset-identifier',
+            },
+            {
+              'label': 'Password',
+              'label-top': true,
+              'data-se': 'o-form-fieldset-credentials.passcode',
+              'name': 'credentials.passcode',
+              'params':  {
+                'showPasswordToggle': false,
+              },
+              'secret': true,
+              'type': 'password',
+            },
+            {
+              name: 'rememberMe',
+              label: false,
+              type: 'checkbox',
+              placeholder: 'Keep me signed in',
+              modelType: 'boolean',
+              required: false,
+              'label-top': true,
+              'data-se': 'o-form-fieldset-rememberMe',
+            },
+          ],
+        },
+      );
+    });
+  });
+
 
   it('sets showPasswordToggle to false if features.showPasswordToggleOnSignInPage is false', done => {
     testContext.settings = new Settings({
@@ -1479,7 +1626,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
           rel: ['create-form'],
           accepts: 'application/vnd.okta.v1+json',
           method: 'POST',
-          action: jasmine.any(Function),
+          action: expect.any(Function),
           value: [
             {
               name: 'identifier',
@@ -1508,7 +1655,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
             {
               name: 'stateHandle',
               required: true,
-              value: jasmine.any(String),
+              value: expect.any(String),
               visible: false,
               mutable: false,
             },
@@ -1519,10 +1666,12 @@ describe('v2/ion/uiSchemaTransformer', function() {
               label: 'Username',
               type: 'text',
               'label-top': true,
+              'data-se': 'o-form-fieldset-identifier',
             },
             {
               'label': 'Password',
               'label-top': true,
+              'data-se': 'o-form-fieldset-credentials.passcode',
               'name': 'credentials.passcode',
               'params':  {
                 'showPasswordToggle': false,
@@ -1538,6 +1687,7 @@ describe('v2/ion/uiSchemaTransformer', function() {
               modelType: 'boolean',
               required: false,
               'label-top': true,
+              'data-se': 'o-form-fieldset-rememberMe',
             },
           ],
         },

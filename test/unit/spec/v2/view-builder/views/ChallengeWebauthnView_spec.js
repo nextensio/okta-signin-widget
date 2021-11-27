@@ -7,30 +7,34 @@ import BrowserFeatures from 'util/BrowserFeatures';
 import CryptoUtil from 'util/CryptoUtil';
 import $sandbox from 'sandbox';
 import Expect from 'helpers/util/Expect';
-import ChallengeWebauthnResponse
-  from '../../../../../../playground/mocks/data/idp/idx/authenticator-verification-webauthn.json';
+import ChallengeWebauthnResponse from '../../../../../../playground/mocks/data/idp/idx/authenticator-verification-webauthn';
 
 describe('v2/view-builder/views/webauthn/ChallengeWebauthnView', function() {
   let testContext;
   beforeEach(function() {
     testContext = {};
     testContext.init = (
-      currentAuthenticatorEnrollment = ChallengeWebauthnResponse.currentAuthenticatorEnrollment.value,
-      authenticatorEnrollments = []
+      currentAuthenticator = ChallengeWebauthnResponse.currentAuthenticator.value,
+      authenticatorEnrollments = [],
+      app = {},
     ) => {
       const appState = new AppState({
-        currentAuthenticatorEnrollment,
+        currentAuthenticator,
         authenticatorEnrollments,
+        app,
       });
-      spyOn(appState, 'hasRemediationObject').and.callFake(
-        formName => formName === 'select-authenticator-authenticate'
-      );
-      spyOn(appState, 'shouldShowSignOutLinkInCurrentForm').and.returnValue(false);
+      jest.spyOn(appState, 'getRemediationAuthenticationOptions').mockReturnValue(formName => {
+        if (formName === 'select-authenticator-authenticate') {
+          return [ { label: 'some authenticator '} ];
+        }
+        return [];
+      });
+      jest.spyOn(appState, 'shouldShowSignOutLinkInCurrentForm').mockReturnValue(false);
       const settings = new Settings({ baseUrl: 'http://localhost:3000' });
       const currentViewState = {
         name: 'challenge-authenticator',
         relatesTo: {
-          value: currentAuthenticatorEnrollment,
+          value: currentAuthenticator,
         },
       };
       testContext.view = new ChallengeWebauthnView({
@@ -48,8 +52,8 @@ describe('v2/view-builder/views/webauthn/ChallengeWebauthnView', function() {
   });
 
   it('shows verify instructions and spinner when webauthn is supported and browser is not safari', function() {
-    spyOn(webauthn, 'isNewApiAvailable').and.callFake(() => true);
-    spyOn(BrowserFeatures, 'isSafari').and.callFake(() => false);
+    jest.spyOn(webauthn, 'isNewApiAvailable').mockReturnValue(true);
+    jest.spyOn(BrowserFeatures, 'isSafari').mockReturnValue(false);
     testContext.init();
     expect(testContext.view.$('.idx-webauthn-verify-text').text()).toBe(
       'You will be prompted to use a security key or biometric verification (Windows Hello, Touch ID, etc.). Follow the instructions to complete verification.'
@@ -57,24 +61,23 @@ describe('v2/view-builder/views/webauthn/ChallengeWebauthnView', function() {
     expect(testContext.view.$('.retry-webauthn').css('display')).toBe('none');
     expect(testContext.view.$('.okta-waiting-spinner').css('display')).toBe('block');
     expect(testContext.view.$('.webauthn-not-supported').length).toBe(0);
-
   });
 
   it('shows verify instructions and button when browser supports webauthn on safari', function() {
-    spyOn(webauthn, 'isNewApiAvailable').and.callFake(() => true);
-    spyOn(BrowserFeatures, 'isSafari').and.callFake(() => true);
+    jest.spyOn(webauthn, 'isNewApiAvailable').mockReturnValue(true);
+    jest.spyOn(BrowserFeatures, 'isSafari').mockReturnValue(true);
     testContext.init();
     expect(testContext.view.$('.idx-webauthn-verify-text').text()).toBe(
       'You will be prompted to use a security key or biometric verification (Windows Hello, Touch ID, etc.). Follow the instructions to complete verification.'
     );
-    expect(testContext.view.$('.retry-webauthn').css('display')).not.toBe('none'); 
+    expect(testContext.view.$('.retry-webauthn').css('display')).not.toBe('none');
     expect(testContext.view.$('.retry-webauthn').text()).toBe('Verify');
     expect(testContext.view.$('.webauthn-not-supported').length).toBe(0);
   });
 
   it('updated button text to "Retry" on click on safari', function() {
-    spyOn(webauthn, 'isNewApiAvailable').and.callFake(() => true);
-    spyOn(BrowserFeatures, 'isSafari').and.callFake(() => true);
+    jest.spyOn(webauthn, 'isNewApiAvailable').mockReturnValue(true);
+    jest.spyOn(BrowserFeatures, 'isSafari').mockReturnValue(true);
     testContext.init();
     expect(testContext.view.$('.idx-webauthn-verify-text').text()).toBe(
       'You will be prompted to use a security key or biometric verification (Windows Hello, Touch ID, etc.). Follow the instructions to complete verification.'
@@ -87,10 +90,10 @@ describe('v2/view-builder/views/webauthn/ChallengeWebauthnView', function() {
   });
 
   it('shows verify instructions if there are existing enrollments', function() {
-    spyOn(webauthn, 'isNewApiAvailable').and.callFake(() => true);
-    spyOn(BrowserFeatures, 'isSafari').and.callFake(() => true);
+    jest.spyOn(webauthn, 'isNewApiAvailable').mockReturnValue(true);
+    jest.spyOn(BrowserFeatures, 'isSafari').mockReturnValue(true);
     testContext.init(
-      ChallengeWebauthnResponse.currentAuthenticatorEnrollment.value,
+      ChallengeWebauthnResponse.currentAuthenticator.value,
       ChallengeWebauthnResponse.authenticatorEnrollments
     );
     expect(testContext.view.$('.idx-webauthn-verify-text').text()).toBe(
@@ -102,7 +105,7 @@ describe('v2/view-builder/views/webauthn/ChallengeWebauthnView', function() {
   });
 
   it('shows error when browser does not support webauthn', function() {
-    spyOn(webauthn, 'isNewApiAvailable').and.callFake(() => false);
+    jest.spyOn(webauthn, 'isNewApiAvailable').mockReturnValue(false);
     testContext.init();
     expect(testContext.view.$('.idx-webauthn-verify-text').length).toBe(0);
     expect(testContext.view.$('.retry-webauthn').length).toBe(0);
@@ -114,12 +117,12 @@ describe('v2/view-builder/views/webauthn/ChallengeWebauthnView', function() {
   });
 
   it('shows UV required callout when userVerification is "required"', function() {
-    spyOn(webauthn, 'isNewApiAvailable').and.callFake(() => true);
-    const currentAuthenticatorEnrollment = JSON.parse(
-      JSON.stringify(ChallengeWebauthnResponse.currentAuthenticatorEnrollment.value)
+    jest.spyOn(webauthn, 'isNewApiAvailable').mockReturnValue(true);
+    const currentAuthenticator = JSON.parse(
+      JSON.stringify(ChallengeWebauthnResponse.currentAuthenticator.value)
     );
-    currentAuthenticatorEnrollment.contextualData.challengeData.userVerification = 'required';
-    testContext.init(currentAuthenticatorEnrollment);
+    currentAuthenticator.contextualData.challengeData.userVerification = 'required';
+    testContext.init(currentAuthenticator);
     expect(testContext.view.$('.uv-required-callout').length).toBe(1);
     expect(testContext.view.$('.uv-required-callout').text().trim()).toBe(
       'Biometric verification or a PIN is required to sign in with this authenticator.'
@@ -127,17 +130,17 @@ describe('v2/view-builder/views/webauthn/ChallengeWebauthnView', function() {
   });
 
   it('does not show UV required callout when userVerification is "discouraged"', function() {
-    spyOn(webauthn, 'isNewApiAvailable').and.callFake(() => true);
-    const currentAuthenticatorEnrollment = JSON.parse(
-      JSON.stringify(ChallengeWebauthnResponse.currentAuthenticatorEnrollment.value)
+    jest.spyOn(webauthn, 'isNewApiAvailable').mockReturnValue(true);
+    const currentAuthenticator = JSON.parse(
+      JSON.stringify(ChallengeWebauthnResponse.currentAuthenticator.value)
     );
-    currentAuthenticatorEnrollment.contextualData.challengeData.userVerification = 'discouraged';
-    testContext.init(currentAuthenticatorEnrollment);
+    currentAuthenticator.contextualData.challengeData.userVerification = 'discouraged';
+    testContext.init(currentAuthenticator);
     expect(testContext.view.$('.uv-required-callout').length).toBe(0);
   });
 
   it('saveForm is called with model when credentials.get succeeds', function(done) {
-    spyOn(webauthn, 'isNewApiAvailable').and.callFake(() => true);
+    jest.spyOn(webauthn, 'isNewApiAvailable').mockReturnValue(true);
     const assertion = {
       response: {
         clientDataJSON: 123,
@@ -145,60 +148,153 @@ describe('v2/view-builder/views/webauthn/ChallengeWebauthnView', function() {
         signature: 'magizh',
       },
     };
-    spyOn(BaseForm.prototype, 'saveForm');
-    spyOn(navigator.credentials, 'get').and.returnValue(Promise.resolve(assertion));
+    jest.spyOn(BaseForm.prototype, 'saveForm');
+    jest.spyOn(navigator.credentials, 'get').mockReturnValue(Promise.resolve(assertion));
 
     testContext.init(
-      ChallengeWebauthnResponse.currentAuthenticatorEnrollment.value,
+      ChallengeWebauthnResponse.currentAuthenticator.value,
       ChallengeWebauthnResponse.authenticatorEnrollments
     );
-    Expect.waitForSpyCall(testContext.view.form.saveForm)
-      .then(() => {
-        expect(navigator.credentials.get).toHaveBeenCalledWith({
-          publicKey: {
-            allowCredentials: [
-              {
-                type: 'public-key',
-                id: CryptoUtil.strToBin(
-                  'hpxQXbu5R5Y2JMqpvtE9Oo9FdwO6z2kMR-ZQkAb6p6GSguXQ57oVXKvpVHT2fyCR_m2EL1vIgszxi00kyFIX6w'
-                ),
-              },
-              {
-                type: 'public-key',
-                id: CryptoUtil.strToBin(
-                  '7Ag2iWUqfz0SanWDj-ZZ2fpDsgiEDt_08O1VSSRZHpgkUS1zhLSyWYDrxXXB5VE_w1iiqSvPaRgXcmG5rPwB-w'
-                ),
-              },
-            ],
-            userVerification: 'required',
-            challenge: CryptoUtil.strToBin(
-              ChallengeWebauthnResponse.currentAuthenticatorEnrollment.value.contextualData.challengeData.challenge
-            ),
+    Expect.wait(() => {
+      return BaseForm.prototype.saveForm.mock.calls.length > 0;
+    }).then(() => {
+      expect(navigator.credentials.get).toHaveBeenCalledWith({
+        publicKey: {
+          allowCredentials: [
+            {
+              type: 'public-key',
+              id: CryptoUtil.strToBin(
+                'hpxQXbu5R5Y2JMqpvtE9Oo9FdwO6z2kMR-ZQkAb6p6GSguXQ57oVXKvpVHT2fyCR_m2EL1vIgszxi00kyFIX6w'
+              ),
+            },
+            {
+              type: 'public-key',
+              id: CryptoUtil.strToBin(
+                '7Ag2iWUqfz0SanWDj-ZZ2fpDsgiEDt_08O1VSSRZHpgkUS1zhLSyWYDrxXXB5VE_w1iiqSvPaRgXcmG5rPwB-w'
+              ),
+            },
+          ],
+          extensions: {
+            appid: 'https://localhost:3000',
           },
-          signal: jasmine.any(Object),
-        });
-        expect(testContext.view.form.model.get('credentials')).toEqual({
-          clientData: CryptoUtil.binToStr(assertion.response.clientDataJSON),
-          authenticatorData: CryptoUtil.binToStr(assertion.response.authenticatorData),
-          signatureData: CryptoUtil.binToStr(assertion.response.signature),
-        });
-        expect(testContext.view.form.saveForm).toHaveBeenCalledWith(testContext.view.form.model);
+          userVerification: 'required',
+          challenge: CryptoUtil.strToBin(
+            ChallengeWebauthnResponse.currentAuthenticator.value.contextualData.challengeData.challenge
+          ),
+        },
+        signal: jasmine.any(Object),
+      });
+      expect(testContext.view.form.model.get('credentials')).toEqual({
+        clientData: CryptoUtil.binToStr(assertion.response.clientDataJSON),
+        authenticatorData: CryptoUtil.binToStr(assertion.response.authenticatorData),
+        signatureData: CryptoUtil.binToStr(assertion.response.signature),
+      });
+      expect(testContext.view.form.saveForm).toHaveBeenCalledWith(testContext.view.form.model);
+      expect(testContext.view.form.webauthnAbortController).toBe(null);
+      done();
+    })
+      .catch(done.fail);
+  });
+
+  it('error with a name that not supported on login bundle is displayed when credentials.create fails', function(done) {
+    jest.spyOn(webauthn, 'isNewApiAvailable').mockReturnValue(true);
+    jest.spyOn(navigator.credentials, 'get').mockReturnValue(Promise.reject({ message: 'error from browser' }));
+
+    testContext.init();
+
+    Expect.waitForCss('.infobox-error')
+      .then(() => {
+        expect(testContext.view.$('.infobox-error')[0].textContent.trim()).toBe('error from browser');
         expect(testContext.view.form.webauthnAbortController).toBe(null);
         done();
       })
       .catch(done.fail);
   });
 
-  it('error is displayed when credentials.get fails', function(done) {
-    spyOn(webauthn, 'isNewApiAvailable').and.callFake(() => true);
-    spyOn(navigator.credentials, 'get').and.returnValue(Promise.reject({ message: 'error from browser' }));
+  it('error with a name that supported on login bundle is displayed when credentials.create fails', function(done) {
+    jest.spyOn(webauthn, 'isNewApiAvailable').mockReturnValue(true);
+    jest.spyOn(navigator.credentials, 'get').mockReturnValue(Promise.reject({
+      message: 'error from browser',
+      name: 'NotAllowedError',
+    }));
+
     testContext.init();
+
     Expect.waitForCss('.infobox-error')
       .then(() => {
-        expect(testContext.view.$el.find('.infobox-error')[0].textContent.trim()).toBe('error from browser');
+        expect(testContext.view.$('.infobox-error')[0].textContent.trim()).toBe('The operation either timed out or was not allowed.');
         expect(testContext.view.form.webauthnAbortController).toBe(null);
         done();
       })
       .catch(done.fail);
+  });
+
+  it('shows correct text when Can\'t verify? is clicked', function() {
+    jest.spyOn(webauthn, 'isNewApiAvailable').mockReturnValue(true);
+    jest.spyOn(BrowserFeatures, 'isSafari').mockReturnValue(false);
+    testContext.init();
+    expect(testContext.view.$('.idx-webauthn-verify-text').text()).toMatchInlineSnapshot(
+      '"You will be prompted to use a security key or biometric verification (Windows Hello, Touch ID, etc.). Follow the instructions to complete verification."'
+    );
+    expect(testContext.view.$('.js-cant-verify').length).toBe(1);
+    expect(testContext.view.$('.js-help-description').css('display')).toBe('none');
+    expect(testContext.view.$('.js-cant-verify').attr('aria-expanded')).toBe(undefined);
+    const cantVerifyLink = document.getElementsByClassName('link js-cant-verify');
+    // Expands when clicked on
+    cantVerifyLink[0].click();
+    Expect.wait(() => {
+      return testContext.view.$('.js-cant-verify').attr('aria-expanded') === 'true';
+    }).then(function() {
+      expect(testContext.view.$('.js-help-description').css('display')).toBe('block');
+      expect(testContext.view.$('.js-help-description').first().html()).toMatchInlineSnapshot(
+        '"<h3>Are you trying to use a biometric authenticator?</h3><br><p>Biometric authenticators (fingerprint, face recognition, PIN) will only work on the same device on which they were set up.</p><br><p>If available, set up another security method on the device you used to set up your biometric authenticator.</p><br><h3>Are you trying to use a security key?</h3><br><p>If you have set up a security key, insert it in a USB port when prompted by the browser and tap on the button or gold disk. Security keys can work on multiple devices.</p><br>"'
+      );
+      expect(testContext.view.$('.js-cant-verify').attr('aria-expanded')).toBe('true');
+    });
+    // Collapses when clicked on again
+    cantVerifyLink[0].click();
+    Expect.wait(() => {
+      return testContext.view.$('.js-cant-verify').attr('aria-expanded') === 'false';
+    }).then(function() {
+      expect(testContext.view.$('.js-help-description').css('display')).toBe('none');
+      expect(testContext.view.$('.js-cant-verify').attr('aria-expanded')).toBe('false');
+    });
+  });
+
+  it('shows additional text when Can\'t verify? is clicked from Okta_Authenticator', function() {
+    jest.spyOn(webauthn, 'isNewApiAvailable').mockReturnValue(true);
+    jest.spyOn(BrowserFeatures, 'isSafari').mockReturnValue(false);
+    const app = { name: 'Okta_Authenticator' };
+    testContext.init(
+      ChallengeWebauthnResponse.currentAuthenticator.value,
+      ChallengeWebauthnResponse.authenticatorEnrollments,
+      app,
+    );
+    expect(testContext.view.$('.idx-webauthn-verify-text').text()).toMatchInlineSnapshot(
+      '"You will be prompted to use a security key or biometric verification (Windows Hello, Touch ID, etc.). Follow the instructions to complete verification."'
+    );
+    expect(testContext.view.$('.js-cant-verify').length).toBe(1);
+    expect(testContext.view.$('.js-help-description').css('display')).toBe('none');
+    expect(testContext.view.$('.js-cant-verify').attr('aria-expanded')).toBe(undefined);
+    const cantVerifyLink = document.getElementsByClassName('link js-cant-verify');
+    // Expands when clicked on
+    cantVerifyLink[0].click();
+    Expect.wait(() => {
+      return testContext.view.$('.js-cant-verify').attr('aria-expanded') === 'true';
+    }).then(function() {
+      expect(testContext.view.$('.js-help-description').css('display')).toBe('block');
+      expect(testContext.view.$('.js-help-description').first().html()).toMatchInlineSnapshot(
+        '"<ol class=\\"ov-enrollment-info\\"><li>Open your Okta Dashboard (e.g. yourcompany.okta.com) on the device you used to setup your security key or biometric authenticator</li><br><li>Go to Settings &gt; Security Methods</li><br><li>On Okta Verify, click \\"Set up\\"</li><br><li>Scan the QR code using Okta Verify and follow instructions to finish enrolling your account<br></li></ol>"'
+      );
+      expect(testContext.view.$('.js-cant-verify').attr('aria-expanded')).toBe('true');
+    });
+    // Collapses when clicked on again
+    cantVerifyLink[0].click();
+    Expect.wait(() => {
+      return testContext.view.$('.js-cant-verify').attr('aria-expanded') === 'false';
+    }).then(function() {
+      expect(testContext.view.$('.js-help-description').css('display')).toBe('none');
+      expect(testContext.view.$('.js-cant-verify').attr('aria-expanded')).toBe('false');
+    });
   });
 });

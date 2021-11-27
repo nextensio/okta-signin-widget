@@ -2,7 +2,7 @@
 /* eslint no-console: 0 */
 
 import signinWidgetOptions from '../.widgetrc.js';
-import { assertNoEnglishLeaks } from '../LocaleUtils';
+import { assertNoEnglishLeaks } from '../playground/LocaleUtils';
 
 let signIn;
 
@@ -55,11 +55,11 @@ const renderPlaygroundWidget = (options = {}) => {
       //    an array of tokens or a single token, depending on the
       //    initial configuration.
       else if (Array.isArray(res)) {
-        console.log(res);
+        console.log(JSON.stringify(res));
         alert('SUCCESS: OIDC with multiple responseTypes. Check console.');
       }
       else {
-        console.log(res);
+        console.log(JSON.stringify(res));
         alert('SUCCESS: OIDC with single responseType. Check Console');
       }
     },
@@ -71,32 +71,42 @@ const renderPlaygroundWidget = (options = {}) => {
 
   signIn.on('ready', () => {
     // handle `ready` event.
-    // use `console.log` in particular so that those logs can be retrived
+    // use `console.log` in particular so that those logs can be retrieved
     // in testcafe for assertion
     console.log('===== playground widget ready event received =====');
   });
 
   signIn.on('afterRender', (context) => {
     // handle `afterRender` event.
-    // use `console.log` in particular so that those logs can be retrived
+    // use `console.log` in particular so that those logs can be retrieved
     // in testcafe for assertion
     console.log('===== playground widget afterRender event received =====');
     console.log(JSON.stringify(context));
 
     // assert english leaks if locale set to ok-PL
     if (signinWidgetOptions.language === 'ok-PL') {
-      // wait for view to finish rendering
-      const viewText = document.getElementById('okta-sign-in').textContent;
+      //Use innerText to avoid including hidden elements
+      let viewText = document.getElementById('okta-sign-in').innerText;
+      viewText = viewText.split('\n').join(' ');
+
       const noTranslationContentExists = document.getElementsByClassName('no-translate').length;
-      const noTranslationContent = noTranslationContentExists &&
-        document.getElementsByClassName('no-translate')[0].textContent;
+
+      let noTranslationContent = [];
+      /* eslint max-depth: [2, 3] */
+      if (noTranslationContentExists) {
+        const noTranslateElems = document.getElementsByClassName('no-translate');
+        for (var i = 0; i < noTranslateElems.length; i++) {
+          //build array of noTranslationContent
+          noTranslationContent.push(noTranslateElems[i].textContent);
+        }
+      }
       assertNoEnglishLeaks(null, viewText, noTranslationContent);
     }
   });
 
   signIn.on('afterError', (context, error) => {
     // handle `afterError` event.
-    // use `console.log` in particular so that those logs can be retrived
+    // use `console.log` in particular so that those logs can be retrieved
     // in testcafe for assertion
     console.log('===== playground widget afterError event received =====');
     console.log(JSON.stringify(context));

@@ -1,9 +1,14 @@
-import { $ } from 'okta';
-import { BaseForm } from '../../internals';
+import { $, loc, createCallout } from 'okta';
+import { BaseFormWithPolling } from '../../internals';
 import Logger from '../../../../util/Logger';
+import { CHALLENGE_TIMEOUT } from '../../utils/Constants';
 import BrowserFeatures from '../../../../util/BrowserFeatures';
-import polling from '../shared/polling';
-import {doChallenge} from '../../utils/ChallengeViewUtil';
+import { doChallenge } from '../../utils/ChallengeViewUtil';
+
+const OV_UV_ENABLE_BIOMETRICS_FASTPASS_DESKTOP 
+    = 'oie.authenticator.oktaverify.method.fastpass.verify.enable.biometrics.desktop';
+const OV_UV_ENABLE_BIOMETRICS_FASTPASS_MOBILE 
+    = 'oie.authenticator.oktaverify.method.fastpass.verify.enable.biometrics.mobile';
 
 const request = (opts) => {
   const ajaxOptions = Object.assign({
@@ -13,7 +18,7 @@ const request = (opts) => {
   return $.ajax(ajaxOptions);
 };
 
-const Body = BaseForm.extend(Object.assign(
+const Body = BaseFormWithPolling.extend(Object.assign(
   {
     noButtonBar: true,
 
@@ -27,7 +32,7 @@ const Body = BaseForm.extend(Object.assign(
     },
 
     initialize() {
-      BaseForm.prototype.initialize.apply(this, arguments);
+      BaseFormWithPolling.prototype.initialize.apply(this, arguments);
       this.listenTo(this.model, 'error', this.onPollingFail);
       doChallenge(this);
       this.startPolling();
@@ -39,7 +44,7 @@ const Body = BaseForm.extend(Object.assign(
     },
 
     remove() {
-      BaseForm.prototype.remove.apply(this, arguments);
+      BaseFormWithPolling.prototype.remove.apply(this, arguments);
       this.stopPolling();
     },
 
@@ -47,7 +52,12 @@ const Body = BaseForm.extend(Object.assign(
       return this.options.currentViewState.relatesTo.value.contextualData.challenge.value;
     },
 
-    doLoopback(authenticatorDomainUrl = '', ports = [], challengeRequest = '') {
+    doLoopback(deviceChallenge) {
+      let authenticatorDomainUrl = deviceChallenge.domain !== undefined ? deviceChallenge.domain : '';
+      let ports = deviceChallenge.ports !== undefined ? deviceChallenge.ports : [];
+      let challengeRequest = deviceChallenge.challengeRequest !== undefined ? deviceChallenge.challengeRequest : '';
+      let probeTimeoutMillis = deviceChallenge.probeTimeoutMillis !== undefined ?
+        deviceChallenge.probeTimeoutMillis : 100;
       let currentPort;
       let foundPort = false;
       let countFailedPorts = 0;
@@ -59,10 +69,15 @@ const Body = BaseForm.extend(Object.assign(
       const checkPort = () => {
         return request({
           url: getAuthenticatorUrl('probe'),
-          // in loopback server, SSL handshake sometimes takes more than 100ms and thus needs additional timeout
-          // however, increasing timeout is a temporary solution since user will need to wait much longer in worst case
-          // TODO: OKTA-278573 Android timeout is temporarily set to 3000ms and needs optimization post-Beta
-          timeout: BrowserFeatures.isAndroid() ? 3000 : 100
+          /*
+          OKTA-278573 in loopback server, SSL handshake sometimes takes more than 100ms and thus needs additional
+          timeout however, increasing timeout is a temporary solution since user will need to wait much longer in
+          worst case.
+          TODO: Android timeout is temporarily set to 3000ms and needs optimization post-Beta.
+          OKTA-365427 introduces probeTimeoutMillis; but we should also consider probeTimeoutMillisHTTPS for
+          customizing timeouts in the more costly Android and other (keyless) HTTPS scenarios.
+          */
+          timeout: BrowserFeatures.isAndroid() ? 3000 : probeTimeoutMillis
         });
       };
 
@@ -72,7 +87,7 @@ const Body = BaseForm.extend(Object.assign(
           url: getAuthenticatorUrl('challenge'),
           method: 'POST',
           data: JSON.stringify({ challengeRequest }),
-          timeout: 3000 // authenticator should respond within 3000ms for challenge request
+          timeout: CHALLENGE_TIMEOUT // authenticator should respond within 5 min (300000ms) for challenge request
         });
       };
 
@@ -113,9 +128,40 @@ const Body = BaseForm.extend(Object.assign(
         <iframe src="${this.customURI}" id="custom-uri-container" style="display:none;"></iframe>
       `).last();
     },
-  },
 
-  polling,
+    showCustomFormErrorCallout(error) {
+      const errorSummaryKeys = error?.responseJSON?.errorSummaryKeys;
+      const isBiometricsRequiredMobile = errorSummaryKeys 
+          && errorSummaryKeys.includes(OV_UV_ENABLE_BIOMETRICS_FASTPASS_MOBILE);
+      const isBiometricsRequiredDesktop = errorSummaryKeys 
+          && errorSummaryKeys.includes(OV_UV_ENABLE_BIOMETRICS_FASTPASS_DESKTOP);
+
+      if (isBiometricsRequiredMobile || isBiometricsRequiredDesktop) {
+        const bulletPoints = [
+          loc('oie.authenticator.oktaverify.method.fastpass.verify.enable.biometrics.point1', 'login'),
+          loc('oie.authenticator.oktaverify.method.fastpass.verify.enable.biometrics.point2', 'login'),
+          loc('oie.authenticator.oktaverify.method.fastpass.verify.enable.biometrics.point3', 'login')
+        ];
+
+        // Add an additional bullet point for desktop devices
+        if (isBiometricsRequiredDesktop) {
+          bulletPoints.push(
+            loc('oie.authenticator.oktaverify.method.fastpass.verify.enable.biometrics.point4', 'login')
+          );
+        }
+
+        const options = {
+          type: 'error',
+          className: 'okta-verify-uv-callout-content',
+          title: loc('oie.authenticator.oktaverify.method.fastpass.verify.enable.biometrics.title', 'login'),
+          subtitle: loc('oie.authenticator.oktaverify.method.fastpass.verify.enable.biometrics.description', 'login'),
+          bullets: bulletPoints,
+        };
+        this.showMessages(createCallout(options));
+        return true;
+      }
+    },
+  },
 ));
 
 export default Body;

@@ -1,6 +1,6 @@
 /* eslint max-params: [2, 16], max-statements: [2, 44] */
 import { _ } from 'okta';
-import createAuthClient from 'widget/createAuthClient';
+import getAuthClient from 'widget/getAuthClient';
 import Router from 'LoginRouter';
 import AccountRecoveryForm from 'helpers/dom/AccountRecoveryForm';
 import Beacon from 'helpers/dom/Beacon';
@@ -14,10 +14,12 @@ import $sandbox from 'sandbox';
 
 const itp = Expect.itp;
 
-function setup(settings, startRouter) {
+async function setup(settings, startRouter) {
   const setNextResponse = Util.mockAjax();
   const baseUrl = 'https://foo.com';
-  const authClient = createAuthClient({ issuer: baseUrl });
+  const authClient = getAuthClient({
+    authParams: { issuer: baseUrl }
+  });
   const successSpy = jasmine.createSpy('success');
   const afterErrorHandler = jasmine.createSpy('afterErrorHandler');
   const router = new Router(
@@ -38,6 +40,9 @@ function setup(settings, startRouter) {
 
   Util.registerRouter(router);
   Util.mockRouterNavigate(router, startRouter);
+  if (startRouter) {
+    await Expect.waitForPrimaryAuth();
+  }
   router.unlockAccount();
   return Expect.waitForUnlockAccount({
     router: router,
@@ -71,6 +76,7 @@ function expectError(test, controller) {
       statusCode: 403,
       xhr: {
         status: 403,
+        headers: { 'content-type': 'application/json' },
         responseType: 'json',
         responseText: '{"errorCode":"E0000006","errorSummary":"You do not have permission to perform the requested action","errorLink":"E0000006","errorId":"oaeJFD_L3CcQoC9Am9y7tpfrQ","errorCauses":[]}',
         responseJSON: {

@@ -25,15 +25,16 @@ import LanguageUtil from 'util/LanguageUtil';
 import AuthContainer from 'views/shared/AuthContainer';
 import Header from 'views/shared/Header';
 import AppState from './models/AppState';
-
+import sessionStorageHelper from './client/sessionStorageHelper';
 import {
   startLoginFlow,
   interactionCodeFlow,
-  clearTransactionMeta
+  configIdxJsClient,
 } from './client';
 
 import transformIdxResponse from './ion/transformIdxResponse';
-import IonResponseHelper from './ion/IonResponseHelper';
+import { FORMS } from './ion/RemediationConstants';
+import CookieUtil from 'util/CookieUtil';
 
 export default Router.extend({
   Events: Backbone.Events,
@@ -50,7 +51,7 @@ export default Router.extend({
       };
     }
 
-    this.settings = new Settings(_.omit(options, 'el', 'authClient'), { parse: true });
+    this.settings = new Settings(_.omit(options, 'el', 'authClient', 'hooks'), { parse: true });
     this.settings.setAuthClient(options.authClient);
 
     if (!options.el) {
@@ -65,6 +66,7 @@ export default Router.extend({
       // and then the open tooltip will lose focus and close.
     });
 
+    this.hooks = options.hooks;
     this.appState = new AppState();
 
     const wrapper = new AuthContainer({ appState: this.appState });
@@ -77,26 +79,57 @@ export default Router.extend({
       settings: this.settings,
     });
 
-    this.listenTo(this.appState, 'remediationSuccess', this.handleIdxResponseSuccess);
+    // Hide until unitial render
+    this.hide();
+
+    configIdxJsClient(this.appState);
+    this.listenTo(this.appState, 'updateAppState', this.handleUpdateAppState);
     this.listenTo(this.appState, 'remediationError', this.handleIdxResponseFailure);
+    this.listenTo(this.appState, 'restartLoginFlow', this.restartLoginFlow);
   },
 
-  handleIdxResponseSuccess(idxResponse) {
+  async handleUpdateAppState(idxResponse) {
+    // Only update the cookie when the user has successfully authenticated themselves 
+    // to avoid incorrect/unnecessary updates.
+    if (this.hasAuthenticationSucceeded(idxResponse) 
+      && this.settings.get('features.rememberMyUsernameOnOIE')) {
+      this.updateIdentifierCookie(idxResponse);
+    }    
+
     if (idxResponse.interactionCode) {
+      // Although session.stateHandle isn't used by interation flow,
+      // it's better to clean up at the end of the flow.
+      sessionStorageHelper.removeStateHandle();
       // This is the end of the IDX flow, now entering OAuth
       return interactionCodeFlow(this.settings, idxResponse);
     }
 
-    // transform response
     const lastResponse = this.appState.get('idx');
-    const ionResponse = transformIdxResponse(this.settings, idxResponse, lastResponse);
 
-    // if this is a terminal error, clear all transaction meta
-    if (IonResponseHelper.isTerminalError(ionResponse)) {
-      clearTransactionMeta(this.settings);
+    // Do not save state handle for the first page loads.
+    // Because there shall be no difference between following behavior
+    // 1. bootstrap widget
+    //    -> save state handle to session storage
+    //    -> refresh page
+    //    -> introspect using sessionStorage.stateHandle
+    // 2. bootstrap widget
+    //    -> do not save state handle to session storage
+    //    -> refresh page
+    //    -> introspect using options.stateHandle
+    if (lastResponse) {
+      sessionStorageHelper.setStateHandle(idxResponse?.context?.stateHandle);
+    }
+    // Login flows that mimic step up (moving forward in login pipeline) via internal api calls,
+    // need to clear stored stateHandles.
+    // This way the flow can maintain the latest state handle. For eg. Device probe calls
+    if (this.appState.get('currentFormName') === FORMS.CANCEL_TRANSACTION) {
+      sessionStorageHelper.removeStateHandle();
     }
 
-    this.appState.setIonResponse(ionResponse);
+    // transform response
+    const ionResponse = transformIdxResponse(this.settings, idxResponse, lastResponse);
+
+    await this.appState.setIonResponse(ionResponse, this.hooks);
   },
 
   handleIdxResponseFailure(error = {}) {
@@ -148,13 +181,14 @@ export default Router.extend({
         error.details.context = { messages: idxMessage };
       }
 
-      return this.handleIdxResponseSuccess(error.details);
+      return this.handleUpdateAppState(error.details);
     }
 
-    // assume it's a config error
-    this.settings.callGlobalError(new Errors.ConfigError(
-      error
-    ));
+    // If the error is a string, wrap it in an Error object
+    if (typeof error === 'string') {
+      error = new Error(error);
+    }
+    this.settings.callGlobalError(error);
 
     // -- TODO: OKTA-244631 How to surface up the CORS error in IDX?
     // -- The `err` object from idx.js doesn't have XHR object
@@ -165,7 +199,13 @@ export default Router.extend({
     // }
   },
 
-  render: function(Controller, options = {}) {
+  /* eslint max-statements: [2, 22] */
+  render: async function(Controller, options = {}) {
+    // If url changes then widget assumes that user's intention was to initiate a new login flow,
+    // so clear stored token to use the latest token.
+    if (sessionStorageHelper.getLastInitiatedLoginUrl() !== window.location.href) {
+      sessionStorageHelper.removeStateHandle();
+    }
     // Since we have a wrapper view, render our wrapper and use its content
     // element as our new el.
     // Note: Render it here because we know dom is ready at this point
@@ -176,30 +216,22 @@ export default Router.extend({
     // If we need to load a language (or apply custom i18n overrides), do
     // this now and re-run render after it's finished.
     if (!Bundles.isLoaded(this.settings.get('languageCode'))) {
-      return LanguageUtil.loadLanguage(this.appState, this.settings)
-        .done(() => {
-          this.render(Controller, options);
-        });
+      await LanguageUtil.loadLanguage(this.appState, this.settings);
     }
 
     // introspect stateToken when widget is bootstrap with state token
     // and remove it from `settings` afterwards as IDX response always has
     // state token (which will be set into AppState)
     if (this.settings.get('oieEnabled')) {
-      return startLoginFlow(this.settings, this.appState)
-        .then(idxResp => {
-          this.settings.unset('stateToken');
-          this.settings.unset('proxyIdxResponse');
-          this.settings.unset('useInteractionCodeFlow');
-          this.appState.trigger('remediationSuccess', idxResp);
-          this.render(Controller, options);
-        })
-        .catch(errorResp => {
-          this.settings.unset('stateToken');
-          this.settings.unset('useInteractionCodeFlow');
-          this.appState.trigger('remediationError', errorResp.error);
-          this.render(Controller, options);
-        });
+      try {
+        const idxResp = await startLoginFlow(this.settings);
+        this.appState.trigger('updateAppState', idxResp);
+      } catch (errorResp) {
+        this.appState.trigger('remediationError', errorResp.error || errorResp);
+      } finally {
+        this.settings.unset('stateToken');
+        this.settings.unset('proxyIdxResponse');
+      }
     }
 
     // Load the custom colors only on the first render
@@ -210,6 +242,9 @@ export default Router.extend({
 
       ColorsUtil.addStyle(colors);
     }
+
+    // Show before initial render
+    this.show();
 
     // render Controller
     this.unload();
@@ -224,6 +259,35 @@ export default Router.extend({
     this.listenTo(this.controller, 'all', this.trigger);
 
     this.controller.render();
+  },
+
+  /**
+    * When "Remember My Username" is enabled, we save the identifier in a cookie
+    * so that the next time the user visits the SIW, the identifier field can be 
+    * pre-filled with this value.
+   */
+  updateIdentifierCookie: function(idxResponse) {
+    if (this.settings.get('features.rememberMe')) {
+      // Update the cookie with the identifier
+      const user = idxResponse?.context?.user;
+      const { identifier } = user?.value || {};
+      if (identifier) {
+        CookieUtil.setUsernameCookie(identifier);
+      }
+    } else {
+      // We remove the cookie explicitly if this feature is disabled.
+      CookieUtil.removeUsernameCookie();
+    }    
+  },
+
+  hasAuthenticationSucceeded(idxResponse) {
+    // Check whether authentication has succeeded. This is done by checking the server response
+    // and seeing if either the 'success' or 'successWithInteractionCode' objects are present.
+    return idxResponse?.rawIdxState?.success || idxResponse?.rawIdxState?.successWithInteractionCode;
+  },
+
+  restartLoginFlow() {
+    this.render(this.controller.constructor);
   },
 
   start: function() {

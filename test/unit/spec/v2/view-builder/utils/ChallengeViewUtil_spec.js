@@ -19,7 +19,8 @@ describe('v2/utils/ChallengeViewUtil', function() {
       'challengeMethod': Enums.LOOPBACK_CHALLENGE,
       'domain': 'test_domain',
       'ports': [12345, 22222],
-      'challengerequest': 'abcdfg12345'
+      'challengerequest': 'abcdfg12345',
+      'probeTimeoutMillis': 100
     };
     spyOn(testView, 'getDeviceChallengePayload').and.callFake(() => deviceChallenge);
     let expectedAddArg = {};
@@ -35,7 +36,7 @@ describe('v2/utils/ChallengeViewUtil', function() {
     expect(testView.title).toBe(loc('deviceTrust.sso.redirectText', 'login'));
     expect(expectedAddArg.className).toBe('loopback-content');
     expect(expectedAddArg.template.call()).toBe(hbs`<div class="spinner"></div>`.call());
-    expect(testView.doLoopback).toHaveBeenCalledWith(deviceChallenge.domain, deviceChallenge.ports, deviceChallenge.challengeRequest);
+    expect(testView.doLoopback).toHaveBeenCalledWith(deviceChallenge);
   });
 
 
@@ -133,6 +134,51 @@ describe('v2/utils/ChallengeViewUtil', function() {
     expect(expectedAddArgs[1].title).toBe(expectedCreateButton.title);
     expectedAddArgs[1].prototype.click();
     expect(Util.redirect).toHaveBeenCalledWith(deviceChallenge.href);
+  });
+
+  it('APP_LINK_CHALLENGE test case', function() {
+    const deviceChallenge = {
+      'challengeMethod': Enums.APP_LINK_CHALLENGE,
+      'href': 'testHref'
+    };
+    spyOn(testView, 'getDeviceChallengePayload').and.callFake(() => deviceChallenge);
+    let expectedAddArgs = [];
+    spyOn(testView, 'add').and.callFake((addArg) => {expectedAddArgs.push(addArg);});
+    spyOn(View, 'extend').and.callFake((extendArg) => {
+      return extendArg;
+    });
+
+    doChallenge(testView);
+
+    expect(testView.getDeviceChallengePayload).toHaveBeenCalled();
+    expect(testView.title).toBe(loc('appLink.title', 'login'));
+
+    expect(testView.add).toHaveBeenCalledTimes(2);
+    expect(expectedAddArgs[0].className).toBe('app-link-content');
+    expect(expectedAddArgs[0].template.call()).toBe(hbs`
+      <div class="spinner "></div>
+      <div class="appLinkContent ">If Okta Verify did not open automatically, tap the button below to reopen Okta Verify.</div>
+    `.call());
+    let expectedCreateButton = createButton({
+      className: 'hide al-button button button-wide button-primary',
+      title: loc('oktaVerify.reopen.button', 'login'),
+      click: () => {
+        // only window.location.href can open universal link in iOS/MacOS
+        // other methods won't do, ex, AJAX get or form get (Util.redirectWithFormGet)
+        window.location.href = deviceChallenge.href;
+      }
+    });
+
+    Object.defineProperty(window, 'location', {
+      value: {
+        href: 'href',
+      }
+    });
+
+    expect(expectedAddArgs[1].className).toBe(expectedCreateButton.className);
+    expect(expectedAddArgs[1].title).toBe(expectedCreateButton.title);
+    expectedAddArgs[1].prototype.click();
+    expect(window.location.href).toEqual(deviceChallenge.href);
   });
 
 });

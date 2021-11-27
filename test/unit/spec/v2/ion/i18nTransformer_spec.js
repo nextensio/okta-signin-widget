@@ -1,6 +1,6 @@
 import { _ } from 'okta';
 import i18nTransformer from 'v2/ion/i18nTransformer';
-import { getMessageKey, getI18NParams } from 'v2/ion/i18nTransformer';
+import { getMessageKey, getI18NParams, getMessage, getMessageFromBrowserError } from 'v2/ion/i18nTransformer';
 import Bundles from 'util/Bundles';
 
 describe('v2/ion/i18nTransformer', function() {
@@ -9,7 +9,6 @@ describe('v2/ion/i18nTransformer', function() {
   beforeAll(() => {
     originalLoginBundle = Bundles.login;
     Bundles.login = _.mapObject({
-
       'oie.email.label': 'email authenticator',
       'oie.password.label': 'password authenticator',
       'oie.phone.label': 'phone authenticator',
@@ -19,27 +18,26 @@ describe('v2/ion/i18nTransformer', function() {
       'oie.google_authenticator.label': 'google authenticator',
       'oie.okta_verify.push.title': 'okta verify push',
       'oie.okta_verify.totp.title': 'okta verify totp',
-
       'oie.password.passwordLabel': 'enter password',
+      'email.enroll.enterCode': 'enter code',
       'oie.security.question.questionKey.label': 'choose a question',
       'oie.security.question.createQuestion.label': 'create a question',
       'oie.google_authenticator.otp.title': 'enter passcode',
-
       'enroll.onprem.username.placeholder': 'enter {0} username',
       'enroll.onprem.passcode.placeholder': 'enter {0} passcode',
-      'errors.E0000106': 'token change mode',
+      'oie.phone.enroll.voice.label': 'voice call',
+      'oie.phone.enroll.sms.label': 'sms',
       'errors.E0000113': '{0}',
-
       'factor.totpHard.rsaSecurId': 'rsa',
-
       'oie.custom_otp.verify.passcode.label': 'enter passcode',
-
       'mfa.phoneNumber.placeholder': 'phone number',
       'mfa.challenge.answer.placeholder': 'answer',
       'mfa.challenge.enterCode.placeholder': 'enter code',
       'mfa.challenge.password.placeholder': 'password',
       'oie.okta_verify.totp.enterCodeText': 'enter totp code',
-      'oie.google_authenticator.otp.enterCodeText': 'enter passcode',
+      'oie.google_authenticator.otp.enterCodeText': 'enter code',
+      'oie.enroll.okta_verify.channel.email.label': 'email',
+      'oie.password.newPasswordLabel': 'new password',
 
       'primaryauth.password.placeholder': 'password',
       'primaryauth.username.placeholder': 'username',
@@ -47,12 +45,15 @@ describe('v2/ion/i18nTransformer', function() {
       'security.disliked_food': 'dislike food answer',
       'security.name_of_first_plush_toy': 'first plush toy answer',
       'security.favorite_vacation_location': 'vacation location answer',
-
-      'idx.email.verification.required': 'An email has been sent. Check your inbox.',
+      'registration.complete.confirm.text': 'To finish signing in, check your email.',
       'idx.foo': 'hello the {0} authenticator',
-
       'password.forgot.email.or.username.placeholder': 'email or username',
-
+      'oie.browser.error.NotAllowedError': 'translated browser thrown error',
+      'oktaverify.rejected': 'rejected',
+      'oie.password.incorrect.message': 'Password is incorrect',
+      'idx.session.expired': 'You have been logged out due to inactivity. Refresh or return to the sign in screen.',
+      'oie.post.password.update.auth.failure.error': 'Authentication failed after password update.',
+      'oie.phone.invalid': 'Invalid Phone',
     }, (value) => `unit test - ${value}`);
   });
   afterAll(() => {
@@ -388,6 +389,63 @@ describe('v2/ion/i18nTransformer', function() {
     });
   });
 
+  it('converts labels for select-authenticator-unlock-account', () => {
+    const resp = {
+      remediations: [
+        {
+          name: 'select-authenticator-unlock-account',
+          uiSchema: [
+            {
+              name: 'identifier',
+              label: 'Username',
+              'label-top': true,
+              type: 'text'
+            },
+            {
+              label: 'Email',
+              'label-top': true,
+              name: 'authenticator.okta_email',
+              type: 'text',
+            },
+            {
+              label: 'Phone',
+              'label-top': true,
+              name: 'authenticator.phone_number',
+              type: 'text',
+            }
+          ]
+        }
+      ]
+    };
+    expect(i18nTransformer(resp)).toEqual({
+      remediations: [
+        {
+          name: 'select-authenticator-unlock-account',
+          uiSchema: [
+            {
+              label: 'unit test - username',
+              'label-top': true,
+              name: 'identifier',
+              type: 'text',
+            },
+            {
+              label: 'unit test - email authenticator',
+              'label-top': true,
+              name: 'authenticator.okta_email',
+              type: 'text',
+            },
+            {
+              label: 'unit test - phone authenticator',
+              'label-top': true,
+              name: 'authenticator.phone_number',
+              type: 'text',
+            }
+          ]
+        }
+      ]
+    });
+  });
+
   it('converts label for challenge-authenticator - email', () => {
     const resp = {
       remediations: [
@@ -478,7 +536,7 @@ describe('v2/ion/i18nTransformer', function() {
     });
   });
 
-  it('converts label for challenge-authenticator - password', () => {
+  it('converts label for challenge-authenticator.okta_password.credentials.password', () => {
     const resp = {
       remediations: [
         {
@@ -516,6 +574,43 @@ describe('v2/ion/i18nTransformer', function() {
             {
               'name': 'credentials.passcode',
               'label': 'unit test - password',
+              'secret': true,
+              'label-top': true,
+              'type': 'password',
+              'params': { 'showPasswordToggle': true }
+            }
+          ]
+        }
+      ]
+    });
+  });
+
+  it('converts label for challenge-authenticator.credentials.password', () => {
+    const resp = {
+      remediations: [
+        {
+          name: 'challenge-authenticator',
+          uiSchema: [
+            {
+              'name': 'credentials.passcode',
+              'label': 'Password',
+              'secret': true,
+              'label-top': true,
+              'type': 'password',
+              'params': { 'showPasswordToggle': true }
+            }
+          ]
+        }
+      ]
+    };
+    expect(i18nTransformer(resp)).toEqual({
+      remediations: [
+        {
+          name: 'challenge-authenticator',
+          uiSchema: [
+            {
+              'name': 'credentials.passcode',
+              'label': 'unit test - password authenticator',
               'secret': true,
               'label-top': true,
               'type': 'password',
@@ -637,6 +732,153 @@ describe('v2/ion/i18nTransformer', function() {
     });
   });
 
+  it('converts label for reset-authenticator - password', () => {
+    const resp = {
+      remediations: [
+        {
+          relatesTo: {
+            value: {
+              type: 'password',
+              key: 'okta_password'
+            }
+          },
+          name: 'reset-authenticator',
+          uiSchema: [
+            {
+              'name': 'credentials.passcode',
+              'label': 'New password',
+              'secret': true,
+              'label-top': true,
+              'type': 'password',
+              'params': { 'showPasswordToggle': true }
+            }
+          ]
+        }
+      ]
+    };
+    expect(i18nTransformer(resp)).toEqual({
+      remediations: [
+        {
+          relatesTo: {
+            value: {
+              type: 'password',
+              key: 'okta_password'
+            }
+          },
+          name: 'reset-authenticator',
+          uiSchema: [
+            {
+              'name': 'credentials.passcode',
+              'label': 'unit test - new password',
+              'secret': true,
+              'label-top': true,
+              'type': 'password',
+              'params': { 'showPasswordToggle': true }
+            }
+          ]
+        }
+      ]
+    });
+  });
+
+  it('converts label for reenroll-authenticator - password', () => {
+    const resp = {
+      remediations: [
+        {
+          relatesTo: {
+            value: {
+              type: 'password',
+              key: 'okta_password'
+            }
+          },
+          name: 'reenroll-authenticator',
+          uiSchema: [
+            {
+              'name': 'credentials.passcode',
+              'label': 'New password',
+              'secret': true,
+              'label-top': true,
+              'type': 'password',
+              'params': { 'showPasswordToggle': true }
+            }
+          ]
+        }
+      ]
+    };
+    expect(i18nTransformer(resp)).toEqual({
+      remediations: [
+        {
+          relatesTo: {
+            value: {
+              type: 'password',
+              key: 'okta_password'
+            }
+          },
+          name: 'reenroll-authenticator',
+          uiSchema: [
+            {
+              'name': 'credentials.passcode',
+              'label': 'unit test - new password',
+              'secret': true,
+              'label-top': true,
+              'type': 'password',
+              'params': { 'showPasswordToggle': true }
+            }
+          ]
+        }
+      ]
+    });
+  });
+
+  it('converts label for reenroll-authenticator-warning - password', () => {
+    const resp = {
+      remediations: [
+        {
+          relatesTo: {
+            value: {
+              type: 'password',
+              key: 'okta_password'
+            }
+          },
+          name: 'reenroll-authenticator-warning',
+          uiSchema: [
+            {
+              'name': 'credentials.passcode',
+              'label': 'New password',
+              'secret': true,
+              'label-top': true,
+              'type': 'password',
+              'params': { 'showPasswordToggle': true }
+            }
+          ]
+        }
+      ]
+    };
+    expect(i18nTransformer(resp)).toEqual({
+      remediations: [
+        {
+          relatesTo: {
+            value: {
+              type: 'password',
+              key: 'okta_password'
+            }
+          },
+          name: 'reenroll-authenticator-warning',
+          uiSchema: [
+            {
+              'name': 'credentials.passcode',
+              'label': 'unit test - new password',
+              'secret': true,
+              'label-top': true,
+              'type': 'password',
+              'params': { 'showPasswordToggle': true }
+            }
+          ]
+        }
+      ]
+    });
+  });
+
   it('converts label for challenge-authenticator - google authenticator otp', () => {
     const resp = {
       remediations: [
@@ -671,7 +913,7 @@ describe('v2/ion/i18nTransformer', function() {
           name: 'challenge-authenticator',
           uiSchema: [
             {
-              label: 'unit test - enter passcode',
+              label: 'unit test - enter code',
               'label-top': true,
               name: 'credentials.passcode',
               type: 'text',
@@ -777,7 +1019,7 @@ describe('v2/ion/i18nTransformer', function() {
     });
   });
 
-  it('converts label for enroll-authenticator-data - phone', () => {
+  it('converts labels for enroll-authenticator-data - phone', () => {
     const resp = {
       remediations: [
         {
@@ -796,10 +1038,12 @@ describe('v2/ion/i18nTransformer', function() {
                 {
                   'label': 'Voice call',
                   'value': 'voice'
-                }
+                },
+                {
+                  'label': 'SMS',
+                  'value': 'sms'
+                },
               ],
-              'value': 'voice',
-              'label-top': true,
               'type': 'radio'
             },
             {
@@ -813,6 +1057,7 @@ describe('v2/ion/i18nTransformer', function() {
         }
       ]
     };
+
     expect(i18nTransformer(resp)).toEqual({
       remediations: [
         {
@@ -829,12 +1074,14 @@ describe('v2/ion/i18nTransformer', function() {
               'required': true,
               'options': [
                 {
-                  'label': 'Voice call',
+                  'label': 'unit test - voice call',
                   'value': 'voice'
+                },
+                {
+                  'label': 'unit test - sms',
+                  'value': 'sms'
                 }
               ],
-              'value': 'voice',
-              'label-top': true,
               'type': 'radio'
             },
             {
@@ -843,6 +1090,133 @@ describe('v2/ion/i18nTransformer', function() {
               'type': 'text',
               'label': 'unit test - phone number',
               'label-top': true
+            }
+          ]
+        }
+      ]
+    });
+  });
+
+  it('converts label for enroll-authenticator - phone', () => {
+    const resp = {
+      remediations: [
+        {
+          name: 'enroll-authenticator',
+          relatesTo: {
+            value: {
+              type: 'phone',
+              key: 'phone_number',
+              methods:[{
+                type: 'sms',
+              }]
+            }
+          },
+          uiSchema: [
+            {
+              'name': 'credentials.passcode',
+              'label': 'Enter password',
+              'secret': true,
+              'label-top': true,
+              'type': 'password',
+              'params': {
+                'showPasswordToggle': true
+              }
+            }
+          ]
+        }
+      ]
+    };
+
+    expect(i18nTransformer(resp)).toEqual({
+      remediations: [
+        {
+          name: 'enroll-authenticator',
+          relatesTo: {
+            value: {
+              type: 'phone',
+              key: 'phone_number',
+              methods:[{
+                // This is not expected to be translated for enroll-authenticator.
+                type: 'sms',
+              }]
+            }
+          },
+          uiSchema: [
+            {
+              'name': 'credentials.passcode',
+              'label': 'unit test - enter code',
+              'secret': true,
+              'label-top': true,
+              'type': 'password',
+              'params': {
+                'showPasswordToggle': true
+              }
+            }
+          ]
+        }
+      ]
+    });
+  });
+
+  it('converts label for enroll-authenticator - email', () => {
+    const resp = {
+      remediations: [
+        {
+          name: 'enroll-authenticator',
+          relatesTo: {
+            value: {
+              type: 'email',
+              key: 'okta_email',
+              'displayName': 'Email',
+              'methods': [
+                {
+                  'type': 'email'
+                }
+              ]
+            }
+          },
+          uiSchema: [
+            {
+              'name': 'credentials.passcode',
+              'label': 'Enter code',
+              'required': true,
+              'label-top': true,
+              'type': 'password',
+              'params': {
+                'showPasswordToggle': true
+              }
+            }
+          ]
+        }
+      ]
+    };
+
+    expect(i18nTransformer(resp)).toEqual({
+      remediations: [
+        {
+          name: 'enroll-authenticator',
+          relatesTo: {
+            value: {
+              type: 'email',
+              key: 'okta_email',
+              'displayName': 'Email',
+              'methods': [
+                {
+                  'type': 'email'
+                }
+              ]
+            }
+          },
+          uiSchema: [
+            {
+              'name': 'credentials.passcode',
+              'label': 'unit test - enter code',
+              'required': true,
+              'label-top': true,
+              'type': 'password',
+              'params': {
+                'showPasswordToggle': true
+              }
             }
           ]
         }
@@ -1088,11 +1462,25 @@ describe('v2/ion/i18nTransformer', function() {
       messages: {
         value: [
           {
-            'message': 'An activation email has been sent to john@gmail.com.',
+            'message': 'unit test - To finish signing in, check your email.',
             'i18n': {
               'key': 'idx.email.verification.required'
             },
             'class': 'INFO'
+          },
+          {
+            'message': 'You have been logged out due to inactivity. Refresh or return to the sign in screen.',
+            'i18n': {
+              'key': 'idx.session.expired'
+            },
+            'class': 'ERROR'
+          },
+          {
+            'message': 'Authentication failed after password update.',
+            'i18n': {
+              'key': 'api.users.auth.error.POST_PASSWORD_UPDATE_AUTH_FAILURE'
+            },
+            'class': 'ERROR'
           },
           {
             'message': 'another {0} message',
@@ -1103,7 +1491,14 @@ describe('v2/ion/i18nTransformer', function() {
               ]
             },
             'class': 'INFO'
-          }
+          },
+          {
+            'message': 'Invalid',
+            'i18n': {
+              'key': 'api.factors.error.sms.invalid_phone'
+            },
+            'class': 'ERROR'
+          },
         ]
       }
     };
@@ -1111,11 +1506,25 @@ describe('v2/ion/i18nTransformer', function() {
       messages: {
         value: [
           {
-            'message': 'unit test - An email has been sent. Check your inbox.',
+            'message': 'unit test - To finish signing in, check your email.',
             'i18n': {
               'key': 'idx.email.verification.required'
             },
             'class': 'INFO'
+          },
+          {
+            'message': 'unit test - You have been logged out due to inactivity. Refresh or return to the sign in screen.',
+            'i18n': {
+              'key': 'idx.session.expired'
+            },
+            'class': 'ERROR'
+          },
+          {
+            'message': 'unit test - Authentication failed after password update.',
+            'i18n': {
+              'key': 'api.users.auth.error.POST_PASSWORD_UPDATE_AUTH_FAILURE'
+            },
+            'class': 'ERROR'
           },
           {
             'message': 'unit test - hello the Email authenticator',
@@ -1126,56 +1535,14 @@ describe('v2/ion/i18nTransformer', function() {
               ]
             },
             'class': 'INFO'
-          }
-        ]
-      }
-    });
-  });
-
-  it('converts errors.E0000106 message', () => {
-    const resp = {
-      messages: {
-        value: [
-          {
-            'message': 'Wait for token to change, then enter the new tokencode',
-            'i18n': {
-              'key': 'errors.E0000106'
-            },
-            'class': 'INFO'
           },
           {
-            'message': 'another {0} message',
+            'message': 'unit test - Invalid Phone',
             'i18n': {
-              'key': 'idx.foo',
-              'params': [
-                'Atko custom on-prem'
-              ]
+              'key': 'api.factors.error.sms.invalid_phone'
             },
-            'class': 'INFO'
-          }
-        ]
-      }
-    };
-    expect(i18nTransformer(resp)).toEqual({
-      messages: {
-        value: [
-          {
-            'message': 'unit test - token change mode',
-            'i18n': {
-              'key': 'errors.E0000106'
-            },
-            'class': 'INFO'
+            'class': 'ERROR'
           },
-          {
-            'message': 'unit test - hello the Atko custom on-prem authenticator',
-            'i18n': {
-              'key': 'idx.foo',
-              'params': [
-                'Atko custom on-prem'
-              ]
-            },
-            'class': 'INFO'
-          }
         ]
       }
     });
@@ -1398,7 +1765,7 @@ describe('v2/ion/i18nTransformer', function() {
                 [
                   {
                     'name': 'credentials.passcode',
-                    'label': 'unit test - enter passcode',
+                    'label': 'unit test - enter code',
                     'required': true,
                     'visible': true,
                   }
@@ -1655,18 +2022,6 @@ describe('v2/ion/i18nTransformer', function() {
     });
   });
 
-  it('gets message key', () => {
-    const message =
-    {
-      'message': 'An activation email has been sent to john@gmail.com.',
-      'i18n': {
-        'key': 'idx.email.verification.required'
-      },
-      'class': 'INFO'
-    };
-    expect(getMessageKey(message)).toEqual('idx.email.verification.required');
-  });
-
   it('converts label for challenge-authenticator - custom otp authenticator', () => {
     const resp = {
       remediations: [
@@ -1712,44 +2067,284 @@ describe('v2/ion/i18nTransformer', function() {
     });
   });
 
-  it('gets message params for enroll-authenticator rsa / on-prem', () => {
-    const remediation =
-    {
-      'name': 'enroll-authenticator',
-      'relatesTo': {
-        'value': {
-          'displayName': 'Atko authenticator'
-        }
-      }
+  it('should get email label if it defined on enrollment-channel-data', () => {
+    const resp = {
+      remediations: [{
+        name: 'enrollment-channel-data',
+        value: [{
+          label: 'Email',
+          name: 'email',
+          required: true,
+          visible: true
+        }],
+        uiSchema: [{
+          label: 'Email',
+          name: 'email',
+          required: true,
+          visible: true,
+          'label-top': true,
+          'data-se': 'o-form-fieldset-email',
+          type: 'text'
+        }]
+      }],
     };
-    expect(getI18NParams(remediation, 'rsa_token')).toEqual(['Atko authenticator']);
-    expect(getI18NParams(remediation, 'onprem_mfa')).toEqual(['Atko authenticator']);
+
+    expect(i18nTransformer(resp)).toEqual({
+      'remediations': [{
+        name: 'enrollment-channel-data',
+        'value': [{
+          'label': 'Email',
+          'name': 'email',
+          'required': true,
+          'visible': true
+        }],
+        'uiSchema': [{
+          'label': 'unit test - email',
+          'name': 'email',
+          'required': true,
+          'visible': true,
+          'label-top': true,
+          'data-se': 'o-form-fieldset-email',
+          'type': 'text'
+        }]
+      }],
+    });
   });
 
-  it('does not get message params for challenge-authenticator rsa / on-prem', () => {
-    const remediation =
-    {
-      'name': 'challenge-authenticator',
-      'relatesTo': {
-        'value': {
-          'displayName': 'Atko authenticator'
-        }
-      }
-    };
-    expect(getI18NParams(remediation, 'rsa_token')).toEqual([]);
-    expect(getI18NParams(remediation, 'onprem_mfa')).toEqual([]);
+  describe('getMessageKey', () => {
+    it('gets message key', () => {
+      const message =
+      {
+        'message': 'To finish signing in, check your email.',
+        'i18n': {
+          'key': 'idx.email.verification.required'
+        },
+        'class': 'INFO'
+      };
+      expect(getMessageKey(message)).toEqual('idx.email.verification.required');
+    });
   });
 
-  it('does not get message params for enroll-authenticator google authenticator', () => {
-    const remediation =
-    {
-      'name': 'enroll-authenticator',
-      'relatesTo': {
-        'value': {
-          'displayName': 'Atko authenticator'
+  describe('getI18NParams', () => {
+    it('gets message params for enroll-authenticator rsa / on-prem', () => {
+      const remediation =
+      {
+        'name': 'enroll-authenticator',
+        'relatesTo': {
+          'value': {
+            'displayName': 'Atko authenticator'
+          }
         }
-      }
-    };
-    expect(getI18NParams(remediation, 'google_otp')).toEqual([]);
+      };
+      expect(getI18NParams(remediation, 'rsa_token')).toEqual(['Atko authenticator']);
+      expect(getI18NParams(remediation, 'onprem_mfa')).toEqual(['Atko authenticator']);
+    });
+
+    it('does not get message params for challenge-authenticator rsa / on-prem', () => {
+      const remediation =
+      {
+        'name': 'challenge-authenticator',
+        'relatesTo': {
+          'value': {
+            'displayName': 'Atko authenticator'
+          }
+        }
+      };
+      expect(getI18NParams(remediation, 'rsa_token')).toEqual([]);
+      expect(getI18NParams(remediation, 'onprem_mfa')).toEqual([]);
+    });
+
+    it('does not get message params for enroll-authenticator google authenticator', () => {
+      const remediation =
+      {
+        'name': 'enroll-authenticator',
+        'relatesTo': {
+          'value': {
+            'displayName': 'Atko authenticator'
+          }
+        }
+      };
+      expect(getI18NParams(remediation, 'google_otp')).toEqual([]);
+    });
+  });
+
+  describe('getMessageFromBrowserError', () => {
+    it('should get translated error message if the browser thrown error supported in our i18n bundle', () => {
+      expect(getMessageFromBrowserError({
+        message: 'browser message',
+        name: 'NotAllowedError'
+      })).toEqual('unit test - translated browser thrown error');
+    });
+  
+    it('should get original message if the browser thrown error is not supported in our i18n bundle', () => {
+      expect(getMessageFromBrowserError({
+        message: 'browser message',
+        name: 'UnsupportedErrorName'
+      })).toEqual('browser message');
+    });
+  });
+
+  describe('getMessage', () => {
+    const expectedWebAuthnGenericError = 'You are currently unable to use a Security key or biometric authenticator. Try again.';
+
+    it.each([
+      [
+        'authfactor.webauthn.error.assertion_validation_failure',
+        {
+          message:'None of the WebAuthn authenticators the user has enrolled for was able to validate the assertion',
+          i18n:{
+            key:'authfactor.webauthn.error.assertion_validation_failure',
+          }
+        },
+        expectedWebAuthnGenericError,
+      ], [
+        'authfactor.webauthn.error.authdata_validation_failure_during_authentication_challenge',
+        {
+          message:'Failed to validate authenticator data during WebAuthn verification.',
+          i18n:{
+            key:'authfactor.webauthn.error.authdata_validation_failure_during_authentication_challenge',
+          }
+        },
+        expectedWebAuthnGenericError,
+      ], [
+        'authfactor.webauthn.error.clientdata_challenge_mismatch',
+        {
+          message:'Challenge in client data doesn\'t match with server side value',
+          i18n:{
+            key:'authfactor.webauthn.error.clientdata_challenge_mismatch',
+          }
+        },
+        expectedWebAuthnGenericError,
+      ], [
+        'authfactor.webauthn.error.clientdata_challenge_missing',
+        {
+          message:'No challenge parameter in client data',
+          i18n:{
+            key:'authfactor.webauthn.error.clientdata_challenge_missing',
+          }
+        },
+        expectedWebAuthnGenericError,
+      ], [
+        'authfactor.webauthn.error.signature_verification_failure',
+        {
+          message:'Signature verification was unsuccessful.',
+          i18n:{
+            key:'authfactor.webauthn.error.signature_verification_failure',
+          }
+        },
+        expectedWebAuthnGenericError,
+      ], [
+        'authfactor.webauthn.error.clientdata_origin_missing',
+        {
+          message:'No origin parameter in client data',
+          i18n:{
+            key:'authfactor.webauthn.error.clientdata_origin_missing',
+          }
+        },
+        expectedWebAuthnGenericError,
+      ], [
+        'authfactor.webauthn.error.clientdata_origin_mismatch',
+        {
+          message: 'Origin parameter in client data doesn\'t match. clientData origin was {0}',
+          i18n: {
+            key: 'authfactor.webauthn.error.clientdata_origin_mismatch',
+            params: ['https://idx.okta1.com']
+          },
+        },
+        expectedWebAuthnGenericError,
+      ], [
+        'authfactor.webauthn.error.clientdata_message_type_mismatch',
+        {
+          message: 'Message type in client data doesn\'t match expected message type.',
+          i18n: {
+            key: 'authfactor.webauthn.error.clientdata_message_type_mismatch',
+          },
+        },
+        expectedWebAuthnGenericError,
+      ], [
+        'authfactor.webauthn.error.clientdata_parsing_failed',
+        {
+          message:'Client data parsing failed',
+          i18n:{
+            key:'authfactor.webauthn.error.clientdata_parsing_failed',
+          },
+        },
+        expectedWebAuthnGenericError,
+      ], [
+        'authfactor.webauthn.error.invalid_enrollment_request_data',
+        {
+          message:'Invalid data in the WebAuthn enrollment request. {0}',
+          i18n:{
+            key:'authfactor.webauthn.error.invalid_enrollment_request_data',
+            params: ['User present bit was not set'],
+          },
+        },
+        expectedWebAuthnGenericError,
+      ],[
+        'oie.authenticator.duo.method.duo.verification_timeout',
+        {
+          message:'We did not hear back from Duo.',
+          i18n:{
+            key:'oie.authenticator.duo.method.duo.verification_timeout',
+          },
+        },
+        'We were unable to verify with Duo. Try again.',
+      ],[
+        'oie.authenticator.duo.method.duo.verification_failed',
+        {
+          message:'Duo web signature verification failed.',
+          i18n:{
+            key:'oie.authenticator.duo.method.duo.verification_failed',
+          },
+        },
+        'We were unable to verify with Duo. Try again.',
+      ], [
+        'authfactor.webauthn.not.known.api.error',
+        {
+          message:'This is not a api error that can be generic.',
+          i18n:{
+            key:'authfactor.webauthn.not.known.api.error',
+          },
+        },
+        'This is not a api error that can be generic.',
+      ],
+    ])('should render correct error message by get key from API: %s', (key, error, expectedMessage) => {
+      Bundles.login = originalLoginBundle;
+      expect(Bundles.login[key]).toBeUndefined();
+      expect(getMessage(error)).toEqual(expectedMessage);
+    });
+
+    it('returns an override key when present in the override map', () => {
+      const key = 'api.authn.poll.error.push_rejected';
+      const message = {
+        message: 'some message',
+        i18n: { key }
+      };
+      const widgetKey = 'oktaverify.rejected';
+      expect(Bundles.login[key]).toBeUndefined();
+      expect(getMessage(message)).toEqual(Bundles.login[widgetKey]);
+    });
+
+    it('uses an i18n key that includes the param if in I18N_OVERRIDE_WITH_PARAMS_MAP and has a known param', () => {
+      const key = 'registration.error.invalidLoginEmail';
+      const message = {
+        message: 'some message',
+        i18n: { key, params: ['Email'] },
+      };
+      const newKey = 'registration.error.invalidLoginEmail.Email';
+      expect(Bundles.login[key]).toBeUndefined();
+      expect(getMessage(message)).toEqual(Bundles.login[newKey]);
+    });
+
+    it('uses an i18n key that includes "custom" if in I18N_OVERRIDE_WITH_PARAMS_MAP and has an unknown param', () => {
+      const key = 'registration.error.invalidLoginEmail';
+      const message = {
+        message: 'some message',
+        i18n: { key, params: ['SecondEmail'] },
+      };
+      const newKey = 'registration.error.invalidLoginEmail.custom';
+      expect(Bundles.login[key]).toBeUndefined();
+      expect(getMessage(message).replace('SecondEmail', '{0}')).toEqual(Bundles.login[newKey]);
+    });
   });
 });

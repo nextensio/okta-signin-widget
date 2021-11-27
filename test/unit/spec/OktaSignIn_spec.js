@@ -1,25 +1,18 @@
 /* eslint max-params:[0, 2] */
 import { $ } from 'okta';
 import PrimaryAuthForm from 'helpers/dom/PrimaryAuthForm';
-import IdentifierForm from 'helpers/dom/v2/IdentifierForm';
-import TerminalView from 'helpers/dom/v2/TerminalView';
 import MockUtil from 'helpers/mocks/Util';
 import Expect from 'helpers/util/Expect';
-import errorResponse from 'helpers/xhr/ERROR_invalid_token';
-import introspectResponse from 'helpers/xhr/UNAUTHENTICATED';
-import idxResponse from 'helpers/xhr/v2/IDX_IDENTIFY';
 import v1Success from 'helpers/xhr/SUCCESS';
-import errorFeatureNotEnabled from 'helpers/xhr/v2/ERROR_FEATURE_NOT_ENABLED';
-import idxVerifyPassword from 'helpers/xhr/v2/IDX_VERIFY_PASSWORD';
-import idxSuccessInteractionCode from 'helpers/xhr/v2/IDX_SUCCESS_INTERACTION_CODE';
-import idxErrorUserIsNotAssigned from 'helpers/xhr/v2/IDX_ERROR_USER_IS_NOT_ASSIGNED';
-import idxErrorSessionExpired from 'helpers/xhr/v2/IDX_ERROR_SESSION_EXPIRED';
 import 'jasmine-ajax';
-import Q from 'q';
 import $sandbox from 'sandbox';
 import Logger from 'util/Logger';
 import Widget from 'widget/OktaSignIn';
 import V1Router from 'LoginRouter';
+import V1AppState from 'models/AppState';
+import V2AppState from 'v2/models/AppState';
+import Hooks from 'models/Hooks';
+
 const url = 'https://foo.com';
 const itp = Expect.itp;
 
@@ -60,7 +53,7 @@ Expect.describe('OktaSignIn initialization', function() {
       expect(signIn.renderEl).toBeDefined();
     });
     it('has a authClient method', function() {
-      expect(signIn.authClient).toBeDefined();	
+      expect(signIn.authClient).toBeDefined();
     });
     it('has a showSignInToGetTokens method', function() {
       expect(signIn.showSignInToGetTokens).toBeDefined();
@@ -77,18 +70,42 @@ Expect.describe('OktaSignIn initialization', function() {
     it('has a remove method', function() {
       expect(signIn.remove).toBeDefined();
     });
+    it('has a before method', function() {
+      expect(signIn.before).toBeDefined();
+    });
+    it('has an after method', function() {
+      expect(signIn.after).toBeDefined();
+    });
+    it('has a getUser method', function() {
+      expect(signIn.getUser).toBeDefined();
+    });
   });
 
   describe('Auth Client', function() {
     Expect.describe('authClient option', function() {
       it('accepts an authClient option', function() {
-        const authClient = { foo: 'bar' };
+        const authClient = { 
+          foo: 'bar', 
+          options: {},
+          _oktaUserAgent: {
+            addEnvironment: jest.fn()
+          } 
+        };
         signIn = new Widget({
           baseUrl: url,
           authClient,
         });
         expect(signIn.authClient).toBe(authClient);
       });
+      // TODO: https://oktainc.atlassian.net/browse/OKTA-433378
+      // it('throws error if _oktaUserAgent field is not exist', function() {
+      //   const authClient = { foo: 'bar' };
+      //   const expectedError = new Errors.ConfigError('The passed in authClient should be version 5.4.0 or above.');
+      //   expect(() => new Widget({
+      //     baseUrl: url,
+      //     authClient,
+      //   })).toThrow(expectedError);
+      // });
     });
 
     Expect.describe('Config', function() {
@@ -204,6 +221,9 @@ Expect.describe('OktaSignIn initialization', function() {
   });
 
   Expect.describe('events', function() {
+    beforeEach(function() {
+      spyOn(Logger, 'error');
+    });
     afterEach(function() {
       signIn.remove();
       signIn.off();
@@ -261,6 +281,30 @@ Expect.describe('OktaSignIn initialization', function() {
         }
       });
     });
+    ['ready', 'afterError', 'afterRender'].forEach(event => {
+      it(`traps third party errors (for ${event} event) in callbacks`, function() {
+        const mockError = new Error('mockerror');
+        const fn = function() {
+          signIn.on(event, function() {
+            throw mockError;
+          });
+          signIn.trigger(event);
+        };
+        expect(fn).not.toThrowError(mockError);
+        expect(Logger.error).toHaveBeenCalledWith(`[okta-signin-widget] "${event}" event handler error:`, mockError);
+      });
+    });
+    it('does not trap errors non-registered events', () => {
+      const mockError = new Error('mockerror');
+      const fn = function() {
+        signIn.on('not-widget-event', function() {
+          throw mockError;
+        });
+        signIn.trigger('not-widget-event');
+      };
+      expect(fn).toThrowError(mockError);
+      expect(Logger.error).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -298,7 +342,7 @@ describe('OktaSignIn object API', function() {
     spyOn(V1Router.prototype, 'start').and.callFake(function() {
       router = this;
       router.controller = {
-        remove: () => {}
+        remove: () => { }
       };
     });
   }
@@ -346,14 +390,14 @@ describe('OktaSignIn object API', function() {
         return $('.primary-auth').length === 1;
       });
     });
-  
+
     describe('success', () => {
       itp('fires success callback', () => {
         createWidget();
         MockUtil.mockAjax(v1Success);
         const successFn = jasmine.createSpy();
         signIn.renderEl({ el: $sandbox }, successFn);
-        
+
         return Expect.wait(() => {
           return $('.primary-auth').length === 1;
         }).then(function() {
@@ -382,7 +426,7 @@ describe('OktaSignIn object API', function() {
         }).then(function() {
           submitPrimaryAuthForm();
         });
-        
+
         return signIn.renderEl({ el: $sandbox })
           .then(res => {
             expect(res).toEqual({
@@ -402,7 +446,7 @@ describe('OktaSignIn object API', function() {
       it('fires error callback', () => {
         createWidget();
         const errorFn = jasmine.createSpy();
-        signIn.renderEl({ el: undefined }, undefined, errorFn).catch(() => {});
+        signIn.renderEl({ el: undefined }, undefined, errorFn).catch(() => { });
         return Expect.wait(() => {
           return errorFn.calls.count() > 0;
         })
@@ -458,7 +502,7 @@ describe('OktaSignIn object API', function() {
       const fn = () => {
         signIn.showSignInToGetTokens();
       };
-      expect(fn).toThrowError('"showSignInToGetTokens()" should not be used for authorization_code flow. ' + 
+      expect(fn).toThrowError('"showSignInToGetTokens()" should not be used for authorization_code flow. ' +
         'Use "showSignInAndRedirect()" instead');
     });
     it('Can override el, clientId, redirectUri', () => {
@@ -556,495 +600,67 @@ describe('OktaSignIn object API', function() {
     });
   });
 
-});
+  describe('getUser', () => {
 
-Expect.describe('OktaSignIn v1 pipeline bootstrap ', function() {
-  let signIn;
-  const form = new PrimaryAuthForm($sandbox);
-  beforeEach(function() {
-    spyOn(Logger, 'warn');
-    signIn = new Widget({
-      baseUrl: url,
-      stateToken: '00stateToken',
-      features: {
-        router: true,
-      },
-    });
-  });
-
-  afterEach(function() {
-    signIn.remove();
-  });
-
-  function setupIntrospect(responseData) {
-    spyOn(window.history, 'pushState');
-    spyOn(signIn.authClient.tx, 'introspect').and.callFake(function() {
-      if (responseData.status !== 200) {
-        return Q.reject(responseData.response);
-      } else {
-        return Q({
-          data: responseData.response,
-        });
-      }
-    });
-    signIn.renderEl({ el: $sandbox });
-    return Expect.wait(() => {
-      return $('.primary-auth').length === 1;
-    });
-  }
-  Expect.describe('Introspects token and loads primary auth view for old pipeline', function() {
-    it('calls introspect API on page load using authjs as client', function() {
-      return setupIntrospect(introspectResponse).then(function() {
-        expect(window.history.pushState.calls.argsFor(0)[2]).toBe('/signin/refresh-auth-state/00stateToken');
-        expect(signIn.authClient.tx.introspect).toHaveBeenCalledWith({ stateToken: '00stateToken' });
-        expect(form.isPrimaryAuth()).toBe(true);
-        const password = form.passwordField();
-
-        expect(password.length).toBe(1);
-        expect(password.attr('type')).toEqual('password');
-        expect(password.attr('id')).toEqual('okta-signin-password');
-        const username = form.usernameField();
-
-        expect(username.length).toBe(1);
-        expect(username.attr('type')).toEqual('text');
-        expect(username.attr('id')).toEqual('okta-signin-username');
-        const signInButton = form.signInButton();
-
-        expect(signInButton.length).toBe(1);
-        expect(signInButton.attr('type')).toEqual('submit');
-        expect(signInButton.attr('id')).toEqual('okta-signin-submit');
-      });
-    });
-
-    it('calls introspect API on page load and handles error using authjs as client', function() {
-      return setupIntrospect(errorResponse).then(function() {
-        expect(window.history.pushState.calls.argsFor(0)[2]).toBe('/signin/refresh-auth-state/00stateToken');
-        expect(signIn.authClient.tx.introspect).toHaveBeenCalledWith({ stateToken: '00stateToken' });
-        expect(form.isPrimaryAuth()).toBe(true);
-        const password = form.passwordField();
-
-        expect(password.length).toBe(1);
-        expect(password.attr('type')).toEqual('password');
-        expect(password.attr('id')).toEqual('okta-signin-password');
-        const username = form.usernameField();
-
-        expect(username.length).toBe(1);
-        expect(username.attr('type')).toEqual('text');
-        expect(username.attr('id')).toEqual('okta-signin-username');
-        const signInButton = form.signInButton();
-
-        expect(signInButton.length).toBe(1);
-        expect(signInButton.attr('type')).toEqual('submit');
-        expect(signInButton.attr('id')).toEqual('okta-signin-submit');
-        Q.resetUnhandledRejections();
-      });
-    });
-  });
-});
-
-Expect.describe('OktaSignIn v2 bootstrap', function() {
-  let signIn;
-  let codeVerifier;
-  let codeChallenge;
-  let codeChallengeMethod;
-
-  beforeEach(function() {
-    spyOn(Logger, 'error');
-    signIn = null;
-    codeVerifier = 'fakecodeVerifier';
-    codeChallenge = 'fakecodeChallenge';
-    codeChallengeMethod = 'fakecodeChallengeMethod';
-  });
-
-  afterEach(function() {
-    signIn && signIn.remove();
-  });
-
-  function setupLoginFlow(widgetOptions, responses) {
-    signIn = new Widget(
-      Object.assign(
-        {
-          baseUrl: url,
-          apiVersion: '1.0.0',
-          features: {
-            router: true,
-          },
-        },
-        widgetOptions || {}
-      )
-    );
-    spyOn(signIn.authClient.token, 'prepareTokenParams').and.returnValue(Promise.resolve({
-      codeVerifier,
-      codeChallenge,
-      codeChallengeMethod
-    }));
-    spyOn(signIn.authClient.transactionManager, 'save');
-    MockUtil.mockAjax(responses);
-
-    // Add customize parser for ION request
-    jasmine.Ajax.addCustomParamParser({
-      test: function(xhr) {
-        return xhr.contentType().indexOf('application/ion+json;') >= 0;
-      },
-      parse: function jsonParser(paramString) {
-        return JSON.parse(paramString);
-      },
-    });
-  }
-
-  function render() {
-    return signIn.renderEl({ el: $sandbox });
-  }
-
-  function setupProxyIdxResponse(options) {
-    signIn = new Widget(
-      Object.assign(
-        {
-          baseUrl: url,
-          proxyIdxResponse: {
-            deviceEnrollment: {
-              type: 'object',
-              value: {
-                name: options.enrollmentType,
-                platform: 'IOS',
-                enrollmentLink: 'https://sampleEnrollmentlink.com',
-                vendor: 'Airwatch',
-                signInUrl: 'https://idx.okta1.com'
-              }
-            }
-          }
-        },
-        options || {}
-      )
-    );
-  }
-
-  Expect.describe('Introspects token and loads Identifier view for new pipeline', function() {
-    itp('calls introspect API on page load using idx-js as client', function() {
-      const form = new IdentifierForm($sandbox);
-      setupLoginFlow({ stateToken: '02stateToken' }, idxResponse);
-      render();
-      return Expect.wait(() => {
-        return $('.siw-main-body').length === 1;
-      }).then(function() {
-        expect(form.getTitle()).toBe('Sign In');
-        expect(form.getIdentifierInput().length).toBe(1);
-        expect(form.getIdentifierInput().attr('name')).toBe('identifier');
-        expect(form.getFormSaveButton().attr('value')).toBe('Next');
-
-        expect(jasmine.Ajax.requests.count()).toBe(1);
-        const firstReq = jasmine.Ajax.requests.first();
-
-        expect(firstReq.data()).toEqual({ stateToken: '02stateToken' });
-        expect(firstReq.method).toBe('POST');
-        expect(firstReq.url).toBe('https://foo.com/idp/idx/introspect');
-      });
-    });
-
-    itp('throws an error if invalid version is passed to idx-js', function() {
-      setupLoginFlow({
-        stateToken: '02stateToken',
-        apiVersion: '2.0.0'
-      }, idxResponse);
-      
-      return render().catch(err => {
-        expect(err.name).toBe('CONFIG_ERROR');
-        expect(err.message.toString()).toEqual('Error: Unknown api version: 2.0.0.  Use an exact semver version.');
-      });
-    });
-  });
-
-  Expect.describe('Interaction code flow', function() {
-    let responses;
-    let interactionHandle;
-
-    beforeEach(function() {
-      interactionHandle = 'fake_interaction_handle';
-      responses = [
-        {
-          state: 200,
-          responseType: 'json',
-          response: {
-            'interaction_handle': interactionHandle
-          },
-        },
-        idxResponse
-      ];
-    });
-
-    itp('calls interact API on page load using idx-js as client in custom hosted widget', function() {
-      const form = new IdentifierForm($sandbox);
-      setupLoginFlow({ 
-        clientId: 'someClientId',
-        redirectUri: 'http://0.0.0.0:9999',
-        useInteractionCodeFlow: true
-      }, responses);
-      spyOn(signIn.authClient.transactionManager, 'exists').and.returnValue(false);
-      render();
-      return Expect.wait(() => {
-        return $('.siw-main-body').length === 1;
-      }).then(function() {
-        expect(form.getTitle()).toBe('Sign In');
-        expect(form.getIdentifierInput().length).toBe(1);
-        expect(form.getIdentifierInput().attr('name')).toBe('identifier');
-        expect(form.getFormSaveButton().attr('value')).toBe('Next');
-
-        expect(jasmine.Ajax.requests.count()).toBe(2);
-        const firstReq = jasmine.Ajax.requests.at(0);
-        const secondReq = jasmine.Ajax.requests.at(1);
-
-        expect(firstReq.method).toBe('POST');
-        expect(firstReq.url).toBe('https://foo.com/oauth2/default/v1/interact');
-        expect(secondReq.method).toBe('POST');
-        expect(secondReq.url).toBe('https://foo.com/idp/idx/introspect');
-      });
-    });
-
-    itp('throws an error if invalid version is passed to idx-js', function() {
-      setupLoginFlow({
-        apiVersion: '2.0.0',
-        clientId: 'someClientId',
-        redirectUri: 'http://0.0.0.0:9999',
-        useInteractionCodeFlow: true
-      }, responses);
-      spyOn(signIn.authClient.transactionManager, 'exists').and.returnValue(false);
-      return render().catch(err => {
-        expect(err.name).toBe('CONFIG_ERROR');
-        expect(err.message.toString()).toEqual('Error: Unknown api version: 2.0.0.  Use an exact semver version.');
-      });
-    });
-
-    describe('shows error when IDENTITY_ENGINE feature is not enabled', () => {
-      itp('shows translated error when i18n is available', () => {
-        const view = new TerminalView($sandbox);
-        const testStr = 'This is a test string';
-        setupLoginFlow({
-          clientId: 'someClientId',
-          redirectUri: 'http://0.0.0.0:9999',
-          useInteractionCodeFlow: true,
-          language: 'en',
-          i18n: {
-            en: {
-              'oie.feature.disabled': testStr
-            }
-          }
-        }, [
-          errorFeatureNotEnabled
-        ]);
-        render();
-        return Expect.wait(() => {
-          return $('.siw-main-view.terminal').length === 1;
-        }).then(function() {
-          expect(view.getErrorMessages()).toBe(testStr);
-        });
-      });
-      itp('shows untranslated error when i18n is not available', () => {
-        const view = new TerminalView($sandbox);
-        const testStr = 'The requested feature is not enabled in this environment.';
-        setupLoginFlow({
-          clientId: 'someClientId',
-          redirectUri: 'http://0.0.0.0:9999',
-          useInteractionCodeFlow: true,
-        }, [
-          errorFeatureNotEnabled
-        ]);
-        render();
-        return Expect.wait(() => {
-          return $('.siw-main-view.terminal').length === 1;
-        }).then(function() {
-          expect(view.getErrorMessages()).toBe(testStr);
-        });
-      });
-    });
-
-    itp('Saves the interaction handle', () => {
-      setupLoginFlow({ 
-        clientId: 'someClientId',
-        redirectUri: 'http://0.0.0.0:9999',
-        useInteractionCodeFlow: true
-      }, responses);
-
-      spyOn(signIn.authClient.transactionManager, 'exists').and.returnValue(false);
-      spyOn(signIn.authClient.transactionManager, 'load').and.returnValue({});
-      render();
-      
-      return Expect.wait(() => {
-        return $('.siw-main-body').length === 1;
-      }).then(function() {
-        expect(signIn.authClient.transactionManager.save).toHaveBeenCalledWith({
-          codeChallenge,
-          codeVerifier,
-          codeChallengeMethod,
-          interactionHandle
-        });
-      });
-    });
-
-    itp('Loads a saved interaction handle', () => {
-      const clientId = 'someClientId';
-      const redirectUri = 'http://0.0.0.0:9999';
-      setupLoginFlow({ 
-        clientId,
-        redirectUri,
-        useInteractionCodeFlow: true
-      }, [idxResponse]);
-
-      const savedInteractionHandle = 'saved-interaction-handle';
-      spyOn(signIn.authClient.transactionManager, 'exists').and.returnValue(true);
-      spyOn(signIn.authClient.transactionManager, 'load').and.returnValue({
-        interactionHandle: savedInteractionHandle,
-        codeVerifier,
-        codeChallenge,
-        codeChallengeMethod,
-
-        // Needed for isTransactionMetaValid
-        clientId,
-        redirectUri
-      });
-      render();
-      
-      return Expect.wait(() => {
-        return $('.siw-main-body').length === 1;
-      }).then(function() {
-
-        expect(jasmine.Ajax.requests.count()).toBe(1);
-        const firstReq = jasmine.Ajax.requests.at(0);
-
-        expect(firstReq.method).toBe('POST');
-        expect(firstReq.url).toBe('https://foo.com/idp/idx/introspect');
-        expect(firstReq.data()).toEqual({ interactionHandle: savedInteractionHandle });
-
-        expect(signIn.authClient.transactionManager.load).toHaveBeenCalled();
-        expect(signIn.authClient.transactionManager.save).toHaveBeenCalledWith({
-          codeChallenge,
-          codeVerifier,
-          codeChallengeMethod,
-          interactionHandle: savedInteractionHandle,
-          clientId,
-          redirectUri
-        });
-      });
-    });
-
-    describe('Clears saved transaction meta', () => {
-      let clientId;
-      let redirectUri;
-      let mockTransactionMeta;
+    describe('before render', () => {
       beforeEach(() => {
-        clientId = 'someClientId';
-        redirectUri = 'http://0.0.0.0:9999';
-        mockTransactionMeta = {
-          interactionHandle,
-          codeVerifier,
-          codeChallenge,
-          codeChallengeMethod,
-          clientId,
-          redirectUri
-        };
+        createWidget();
       });
+      it('returns undefined', () => {
+        expect(signIn.getUser()).toBeUndefined();
+      });
+    });
 
-      itp('clears after successful login', () => {
+    describe('after render', () => {
+      beforeEach(() => {
+        createWidget();
+        signIn.renderEl({ el: $sandbox });
+      });
+      it('returns result from appState', () => {
+        const mockUser = { fake: true };
+        jest.spyOn(V1AppState.prototype, 'getUser').mockReturnValue(mockUser);
+        expect(signIn.getUser()).toBe(mockUser);
 
-        setupLoginFlow({ 
-          clientId,
-          redirectUri,
-          useInteractionCodeFlow: true
-        }, [
-          idxSuccessInteractionCode, {
-            state: 200,
-            responseType: 'json',
-            response: {
-              'access_token': 'fake_access_token'
-            }
-          }
-        ]);
-        spyOn(signIn.authClient.transactionManager, 'clear');
-        spyOn(signIn.authClient.transactionManager, 'exists').and.returnValue(true);
-        spyOn(signIn.authClient.transactionManager, 'load').and.returnValue(mockTransactionMeta);
-        spyOn(signIn.authClient.token, 'exchangeCodeForTokens').and.returnValue(Promise.resolve({
-          tokens: {}
-        }));
+      });
+    });
 
-        return render().then(function() {
-          expect(signIn.authClient.transactionManager.clear).toHaveBeenCalled();
+    describe('after render v2', () => {
+      beforeEach(() => {
+        createWidget({ stateToken: 'fakeV2Token' });
+        signIn.renderEl({ el: $sandbox });
+      });
+      it('returns result from appState', () => {
+        const mockUser = { fake: true };
+        jest.spyOn(V2AppState.prototype, 'getUser').mockReturnValue(mockUser);
+        expect(signIn.getUser()).toBe(mockUser);
+
+      });
+    });
+  });
+
+  describe('Hooks API', () => {
+    beforeEach(() => {
+      jest.spyOn(Hooks.prototype, 'mergeHook');
+      createWidget();
+    });
+    describe('before()', () => {
+      it('calls mergeHook', () => {
+        const fn = jest.fn();
+        signIn.before('some-form', fn);
+        expect(Hooks.prototype.mergeHook).toHaveBeenCalledWith('some-form', {
+          before: [fn]
         });
       });
+    });
 
-      itp('clears on permanent error', () => {
-        setupLoginFlow({ 
-          clientId,
-          redirectUri,
-          useInteractionCodeFlow: true
-        }, [
-          idxErrorSessionExpired
-        ]);
-        spyOn(signIn.authClient.transactionManager, 'clear');
-        spyOn(signIn.authClient.transactionManager, 'exists').and.returnValue(true);
-        spyOn(signIn.authClient.transactionManager, 'load').and.returnValue(mockTransactionMeta);
-        render();
-        return Expect.wait(() => {
-          return $('.siw-main-body').length === 1;
-        }).then(function() {
-          expect(signIn.authClient.transactionManager.clear).toHaveBeenCalled();
+    describe('after()', () => {
+      it('calls mergeHook', () => {
+        const fn = jest.fn();
+        signIn.after('some-form', fn);
+        expect(Hooks.prototype.mergeHook).toHaveBeenCalledWith('some-form', {
+          after: [fn]
         });
       });
-  
-      itp('does NOT clear on recoverable error', () => {
-        setupLoginFlow({ 
-          clientId,
-          redirectUri,
-          useInteractionCodeFlow: true
-        }, [
-          idxErrorUserIsNotAssigned
-        ]);
-        spyOn(signIn.authClient.transactionManager, 'clear');
-        spyOn(signIn.authClient.transactionManager, 'exists').and.returnValue(true);
-        spyOn(signIn.authClient.transactionManager, 'load').and.returnValue(mockTransactionMeta);
-        render();
-        return Expect.wait(() => {
-          return $('.siw-main-body').length === 1;
-        }).then(function() {
-          expect(signIn.authClient.transactionManager.clear).not.toHaveBeenCalled();
-        });
-      });
-
-      itp('Clears when user chooses "cancel" action', () => {
-        setupLoginFlow({ 
-          clientId,
-          redirectUri,
-          useInteractionCodeFlow: true
-        }, [
-          idxVerifyPassword,
-          // cancel response
-          {
-            state: 200,
-            responseType: 'json',
-            response: {}
-          }
-        ]);
-        // simulate saved transaction
-        spyOn(signIn.authClient.transactionManager, 'clear');
-        spyOn(signIn.authClient.transactionManager, 'exists').and.returnValue(true);
-        spyOn(signIn.authClient.transactionManager, 'load').and.returnValue(mockTransactionMeta);
-        render();
-        
-        return Expect.wait(() => {
-          return $('.siw-main-body').length === 1;
-        }).then(function() {
-          expect(signIn.authClient.transactionManager.clear).not.toHaveBeenCalled();
-          const $signOut = $('a[data-se="cancel"]');
-          $signOut.click();
-          expect(signIn.authClient.transactionManager.clear).toHaveBeenCalled();
-        });
-      });
-    }); // Clear transaction
-  }); // interaction code
-
-  itp('Gets proxyIdxResponse and render terminal view', function() {
-    setupProxyIdxResponse({ enrollmentType : 'mdm'});
-    render();
-    return Expect.wait(() => {
-      return $('.siw-main-body').length === 1;
     });
   });
 });

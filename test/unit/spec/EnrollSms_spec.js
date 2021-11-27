@@ -1,6 +1,6 @@
 /* eslint max-params: 0 */
 import { _, $ } from 'okta';
-import createAuthClient from 'widget/createAuthClient';
+import getAuthClient from 'widget/getAuthClient';
 import Router from 'LoginRouter';
 import AuthContainer from 'helpers/dom/AuthContainer';
 import Beacon from 'helpers/dom/Beacon';
@@ -22,7 +22,9 @@ Expect.describe('EnrollSms', function() {
   function setup(resp, startRouter, routerOptions = {}) {
     const setNextResponse = Util.mockAjax();
     const baseUrl = 'https://foo.com';
-    const authClient = createAuthClient({ issuer: baseUrl, transformErrorXHR: LoginUtil.transformErrorXHR });
+    const authClient = getAuthClient({
+      authParams: { issuer: baseUrl, transformErrorXHR: LoginUtil.transformErrorXHR }
+    });
     const afterErrorHandler = jasmine.createSpy('afterErrorHandler');
     const router = new Router({
       el: $sandbox,
@@ -214,6 +216,20 @@ Expect.describe('EnrollSms', function() {
         expect(test.form.getCodeFieldAutocomplete()).toBe('off');
       });
     });
+    itp('has hidden country search input by default', function() {
+      return setup().then(function() {
+        const searchInput = $sandbox.find('.chzn-search > input');
+        expect(searchInput.css('display')).toBe('none');
+      });
+    });
+    itp('shows country search input on mousedown of country dropdown', function() {
+      return setup().then(function(test) {
+        const searchInput = $sandbox.find('.chzn-search > input');
+        const mousedown = $.Event('mousedown');
+        test.form.countryDropdown().trigger(mousedown);
+        expect(searchInput.css('display')).toBe('inline-block');
+      });
+    });
     itp('defaults to United States for the country', function() {
       return setup(allFactorsRes)
         .then(function(test) {
@@ -395,6 +411,7 @@ Expect.describe('EnrollSms', function() {
             statusCode: 400,
             xhr: {
               status: 400,
+              headers: { 'content-type': 'application/json' },
               responseType: 'json',
               responseText: '{"errorCode":"E0000001","errorSummary":"Api validation failed: factorEnrollRequest","errorLink":"E0000001","errorId":"oaepmWRr7i5TZa2AQv8sNmu6w","errorCauses":[{"errorSummary":"Invalid Phone Number."}]}',
               responseJSON: {
@@ -700,6 +717,7 @@ Expect.describe('EnrollSms', function() {
               statusCode: 403,
               xhr: {
                 status: 403,
+                headers: { 'content-type': 'application/json' },
                 responseType: 'json',
                 responseText: '{"errorCode":"E0000068","errorSummary":"Invalid Passcode/Answer","errorLink":"E0000068","errorId":"oaeW52tAk_9T0Obvns7jwww6g","errorCauses":[{"errorSummary":"Your token doesn\'t match our records. Please try again."}]}',
                 responseJSON: {

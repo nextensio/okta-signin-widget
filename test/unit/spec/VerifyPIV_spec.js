@@ -1,6 +1,6 @@
 /* eslint max-params: [2, 18], max-statements: 0 */
 import { _, internal } from 'okta';
-import createAuthClient from 'widget/createAuthClient';
+import getAuthClient from 'widget/getAuthClient';
 import Router from 'LoginRouter';
 import Beacon from 'helpers/dom/Beacon';
 import PivForm from 'helpers/dom/PivForm';
@@ -17,7 +17,9 @@ const itp = Expect.itp;
 function setup(errorResponse, pivConfig) {
   const setNextResponse = Util.mockAjax();
   const baseUrl = 'https://foo.com';
-  const authClient = createAuthClient({ issuer: baseUrl });
+  const authClient = getAuthClient({
+    authParams: { issuer: baseUrl }
+  });
   const successSpy = jasmine.createSpy('success');
   const afterErrorHandler = jasmine.createSpy('afterErrorHandler');
   const defaultConfig = {
@@ -174,7 +176,7 @@ Expect.describe('PIV', function() {
         })
         .then(function(test) {
           expect(test.form.hasErrors()).toBe(true);
-          expect(test.form.errorBox()).toHaveLength(1);
+          expect(test.form.errorBox().length).toEqual(1);
           expect(test.form.errorMessage()).toEqual('Invalid certificate.');
         });
     });
@@ -214,7 +216,7 @@ Expect.describe('PIV', function() {
         })
         .then(function(test) {
           expect(test.form.hasErrors()).toBe(true);
-          expect(test.form.errorBox()).toHaveLength(1);
+          expect(test.form.errorBox().length).toEqual(1);
           expect(test.form.errorMessage()).toEqual(
             'There was an error signing in. Click the button below to try again.'
           );
@@ -231,7 +233,7 @@ Expect.describe('PIV', function() {
         })
         .then(function(test) {
           expect(test.form.hasErrors()).toBe(true);
-          expect(test.form.errorBox()).toHaveLength(1);
+          expect(test.form.errorBox().length).toEqual(1);
           expect(test.form.errorMessage()).toEqual(
             'There was an error signing in. Click the button below to try again.'
           );
@@ -249,7 +251,7 @@ Expect.describe('PIV', function() {
         })
         .then(function(test) {
           expect(test.form.hasErrors()).toBe(true);
-          expect(test.form.errorBox()).toHaveLength(1);
+          expect(test.form.errorBox().length).toEqual(1);
           expect(test.form.errorMessage()).toEqual('Authentication failed');
         });
     });

@@ -1,6 +1,6 @@
 /* eslint max-params: [2, 17], max-statements:[2, 70] */
 import { _, $, Backbone } from 'okta';
-import createAuthClient from 'widget/createAuthClient';
+import getAuthClient from 'widget/getAuthClient';
 import Router from 'LoginRouter';
 import Beacon from 'helpers/dom/Beacon';
 import RegForm from 'helpers/dom/RegistrationForm';
@@ -8,8 +8,11 @@ import Util from 'helpers/mocks/Util';
 import Expect from 'helpers/util/Expect';
 import resSuccess from 'helpers/xhr/SUCCESS';
 import resErrorNotUnique from 'helpers/xhr/ERROR_notUnique';
+import resErrorInvalidEmailDomain from 'helpers/xhr/ERROR_INVALID_EMAIL_DOMAIN';
 import RegSchema from 'models/RegistrationSchema';
 import $sandbox from 'sandbox';
+import Settings from 'models/Settings';
+
 
 const itp = Expect.itp;
 const testData = {
@@ -111,7 +114,9 @@ function setup(settings) {
   settings || (settings = {});
   const setNextResponse = Util.mockAjax();
   const baseUrl = 'https://foo.com';
-  const authClient = createAuthClient({ issuer: baseUrl });
+  const authClient = getAuthClient({
+    authParams: { issuer: baseUrl }
+  });
   const successSpy = jasmine.createSpy('success');
   const afterErrorHandler = jasmine.createSpy('afterErrorHandler');
   const router = new Router(
@@ -247,7 +252,7 @@ Expect.describe('Registration', function() {
       return setup({
         i18n: {
           en: {
-            'registration.error.userName.notUniqueWithinOrg': 'Custom duplicate account error message',
+            'registration.error.userName.notUniqueWithinOrg': 'Custom duplicate {0} error message',
           }
         }
       }).then(function(test) {
@@ -263,8 +268,51 @@ Expect.describe('Registration', function() {
         return Expect.waitForFormErrorBox(test.form, test);
       }).then(function(test) {
         expect(test.form.errorBox().length).toBe(1);
-        expect(test.form.errorBox().text().trim()).toBe('Custom duplicate account error message');
+        expect(test.form.errorBox().text().trim()).toBe('Custom duplicate Email error message');
       });
+    });
+  });
+  itp('render error summary when errorCause is using location that starts with data.userProfile', function() {
+    return setup().then(function(test) {
+      Util.resetAjaxRequests();
+      test.form.setUserName('test@example.com');
+      test.form.setPassword('Abcd1234');
+      test.form.setFirstname('firstName');
+      test.form.setLastname('lastName');
+      test.form.setReferrer('referrer');
+      test.setNextResponse(resErrorInvalidEmailDomain);
+      test.form.submit();
+
+      return Expect.waitForFormErrorBox(test.form, test);
+    }).then(function(test) {
+      expect(test.form.errorBox().length).toBe(1);
+      expect(test.form.errorBox().text().trim()).toBe('You specified an invalid email domain');
+    });
+  });
+  itp('render generic error when errorCause is using location that does not start with data.userProfile', function() {
+    return setup().then(function(test) {
+      Util.resetAjaxRequests();
+      test.form.setUserName('test@example.com');
+      test.form.setPassword('Abcd1234');
+      test.form.setFirstname('firstName');
+      test.form.setLastname('lastName');
+      test.form.setReferrer('referrer');
+      // update the location property to NOT start with data.userProfile
+      resErrorInvalidEmailDomain.response.errorCauses[0].location = 'someLocation';
+      test.setNextResponse(resErrorInvalidEmailDomain);
+      test.form.submit();
+
+      return Expect.waitForFormErrorBox(test.form, test);
+    }).then(function(test) {
+      expect(test.form.errorBox().text().trim()).toBe(
+        'We found some errors. Please review the form and make corrections.'
+      );
+      const { errorSummary, location } = resErrorInvalidEmailDomain.response.errorCauses[0];
+      test.router.controller.renderLegacyLocationErrorIfNeeded(location, errorSummary);
+      expect(test.form.errorBox().length).toBe(1);
+      expect(test.form.errorBox().text().trim()).toBe(
+        'We found some errors. Please review the form and make corrections.'
+      );
     });
   });
 
@@ -398,9 +446,9 @@ Expect.describe('Registration', function() {
         expect(test.form.hasPasswordComplexitySatisfied('4')).toBe(true);
         expect(test.form.$('#subschemas-password').html()).toBe(
           '<div class="subschema-0 subschema-satisfied"><p class=""><span class="icon icon-16 confirm-16"></span>registration.passwordComplexity.minLength</p></div>' +
-          '<div class="subschema-1 subschema-satisfied"><p class=""><span class="icon icon-16 confirm-16"></span>registration.passwordComplexity.minNumber</p></div>' + 
-          '<div class="subschema-2 subschema-error subschema-unsatisfied"><p class=""><span class="icon icon-16 error error-16-small"></span>registration.passwordComplexity.minLower</p></div>' + 
-          '<div class="subschema-3 subschema-error subschema-unsatisfied"><p class=""><span class="icon icon-16 error error-16-small"></span>registration.passwordComplexity.minUpper</p></div>' + 
+          '<div class="subschema-1 subschema-satisfied"><p class=""><span class="icon icon-16 confirm-16"></span>registration.passwordComplexity.minNumber</p></div>' +
+          '<div class="subschema-2 subschema-error subschema-unsatisfied"><p class="" role="alert" aria-live="polite"><span class="icon icon-16 error error-16-small"></span>registration.passwordComplexity.minLower</p></div>' +
+          '<div class="subschema-3 subschema-error subschema-unsatisfied"><p class="" role="alert" aria-live="polite"><span class="icon icon-16 error error-16-small"></span>registration.passwordComplexity.minUpper</p></div>' +
           '<div class="subschema-4 subschema-satisfied"><p class=""><span class="icon icon-16 confirm-16"></span>registration.passwordComplexity.excludeUsername</p></div>'
         );
       });
@@ -796,6 +844,7 @@ Expect.describe('Registration', function() {
 
         spyOn(Backbone.Model.prototype, 'save').and.returnValue($.Deferred().resolve());
         model.save();
+        Util.callAllTimeouts();
         expect(test.router.controller.model.get('userName')).toBe('test@example.com');
         expect(test.router.controller.model.get('preferredLanguage')).toBe('en');
         expect(test.router.controller.model.get('countryCode')).toBe('us');
@@ -829,6 +878,7 @@ Expect.describe('Registration', function() {
 
         spyOn(Backbone.Model.prototype, 'save').and.returnValue($.Deferred().resolve());
         model.save();
+        Util.callAllTimeouts();
         expect(setting.registration.postSubmit).toHaveBeenCalled();
       });
     });
@@ -914,7 +964,7 @@ Expect.describe('Registration', function() {
           },
           preSubmit: function(postData, onSuccess, onFailure) {
             preSubmitSpy(postData, onSuccess, onFailure);
-            onSuccess();
+            onSuccess(postData);
           },
           postSubmit: function(response, onSuccess, onFailure) {
             postSubmitSpy(response, onSuccess, onFailure);
@@ -942,8 +992,49 @@ Expect.describe('Registration', function() {
 
         spyOn(Backbone.Model.prototype, 'save').and.returnValue($.Deferred().reject(apiResponse));
         model.save();
+        Util.callAllTimeouts();
         expectRegApiError(test, '\'Email address \' must be in the form of an email address');
       });
+    });
+    itp('tests primary button staying disabled through save state', function() {
+      const parseSchemaSpy = jasmine.createSpy('parseSchemaSpy');
+      const preSubmitSpy = jasmine.createSpy('preSubmitSpy');
+      const postSubmitSpy = jasmine.createSpy('postSubmitSpy');
+      const setting = {
+        registration: {
+          parseSchema: function(resp, onSuccess, onFailure) {
+            parseSchemaSpy(resp, onSuccess, onFailure);
+            onSuccess(resp);
+          },
+          preSubmit: function(postData, onSuccess, onFailure) {
+            preSubmitSpy(postData, onSuccess, onFailure);
+            onSuccess(postData);
+          },
+          postSubmit: function(postData, onSuccess, onFailure) {
+            postSubmitSpy(postData, onSuccess, onFailure);
+            onSuccess(postData);
+          },
+        },
+      };
+
+      return setup(setting)
+        .then(function(test) {
+          spyOn(Backbone.Model.prototype, 'save').and.returnValue($.Deferred().resolve());
+          spyOn(Settings.prototype, 'postRegistrationSubmit').and
+            .returnValue(new Promise(resolve => setTimeout(resolve, 105)));
+          Util.resetAjaxRequests();
+          test.form.setUserName('test@example.com');
+          test.form.setPassword('Abcd1234');
+          test.form.setFirstname('firstName');
+          test.form.setLastname('lastName');
+          test.form.setReferrer('referrer');
+          expect($('input.button-primary').length).toBe(1);
+          expect($('input.button-primary.btn-disabled').length).toBe(0);
+          test.form.submit();
+          return new Promise(resolve => setTimeout(resolve, 100));
+        }).then(() => {
+          expect($('input.button-primary.btn-disabled').length).toBe(1);
+        });
     });
   });
 });

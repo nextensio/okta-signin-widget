@@ -1,6 +1,6 @@
 /* eslint max-params:[2, 28], max-statements:[2, 41], camelcase:0, max-len:[2, 180] */
 import { _, $, internal } from 'okta';
-import createAuthClient from 'widget/createAuthClient';
+import getAuthClient from 'widget/getAuthClient';
 import Router from 'LoginRouter';
 import AuthContainer from 'helpers/dom/AuthContainer';
 import Beacon from 'helpers/dom/Beacon';
@@ -8,11 +8,13 @@ import IDPDiscoveryForm from 'helpers/dom/IDPDiscoveryForm';
 import Util from 'helpers/mocks/Util';
 import Expect from 'helpers/util/Expect';
 import resError from 'helpers/xhr/ERROR_webfinger';
+import resSuccess from 'helpers/xhr/SUCCESS';
 import resSuccessRepostIWA from 'helpers/xhr/IDPDiscoverySuccessRepost_IWA';
 import resSuccessIWA from 'helpers/xhr/IDPDiscoverySuccess_IWA';
 import resSuccessOktaIDP from 'helpers/xhr/IDPDiscoverySuccess_OktaIDP';
 import resSuccessSAML from 'helpers/xhr/IDPDiscoverySuccess_SAML';
 import resPasswordlessUnauthenticated from 'helpers/xhr/PASSWORDLESS_UNAUTHENTICATED';
+import resUnauthenticated from 'helpers/xhr/UNAUTHENTICATED';
 import resSecurityImage from 'helpers/xhr/security_image';
 import resSecurityImageFail from 'helpers/xhr/security_image_fail';
 import IDPDiscovery from 'models/IDPDiscovery';
@@ -42,11 +44,13 @@ function setup(settings, requests) {
 
   const setNextResponse = Util.mockAjax(requests);
   const baseUrl = 'https://foo.com';
-  const authClient = createAuthClient({
-    issuer: baseUrl,
-    pkce: false,
-    transformErrorXHR: WidgetUtil.transformErrorXHR,
-    headers: {},
+  const authClient = getAuthClient({
+    authParams: {
+      issuer: baseUrl,
+      pkce: false,
+      transformErrorXHR: WidgetUtil.transformErrorXHR,
+      headers: {},
+    }
   });
   const successSpy = jasmine.createSpy('success');
   const afterErrorHandler = jasmine.createSpy('afterErrorHandler');
@@ -122,7 +126,13 @@ function setupSocial(settings) {
     )
   ).then(function(test) {
     spyOn(window, 'open').and.callFake(function() {
-      test.oidcWindow = { closed: false, close: jasmine.createSpy() };
+      test.oidcWindow = { 
+        closed: false, 
+        close: jasmine.createSpy(),
+        location: {
+          assign: jasmine.createSpy()
+        }
+      };
       return test.oidcWindow;
     });
     return test;
@@ -362,6 +372,12 @@ Expect.describe('IDPDiscovery', function() {
       });
     });
     itp('does not show a beacon if features.securityImage is false', function() {
+
+      // BaseLoginRouter will render twice if language bundles are not loaded:
+      // https://github.com/okta/okta-signin-widget/blob/master/src/util/BaseLoginRouter.js#L202
+      // We are not testing i18n, so we can mock language bundles as loaded
+      Util.mockBundles();
+
       return setup().then(function(test) {
         expect(test.beacon.beacon().length).toBe(0);
       });
@@ -634,7 +650,7 @@ Expect.describe('IDPDiscovery', function() {
     });
     itp('toggles "focused-input" css class on focus in and focus out', function() {
       return setup().then(function(test) {
-        test.form.usernameField().focus();
+        test.form.usernameField().focusin();
         expect(test.form.usernameField()[0].parentElement).toHaveClass('focused-input');
         test.form.usernameField().focusout();
         expect(test.form.usernameField()[0].parentElement).not.toHaveClass('focused-input');
@@ -853,6 +869,82 @@ Expect.describe('IDPDiscovery', function() {
           expect(ajaxArgs.requestHeaders['X-Device-Fingerprint']).toBeUndefined();
         });
     });
+    itp('renders primary auth with a device fingerprint for passwordless flow during idp discovery', 
+      function() {
+        spyOn(DeviceFingerprint, 'generateDeviceFingerprint').and.callFake(function() {
+          const deferred = Q.defer();
+          deferred.resolve('thisIsTheDeviceFingerprint');
+          return deferred.promise;
+        });
+        return setup({ features: {deviceFingerprinting: true,  passwordlessAuth: true}, })
+          .then(function(test) {
+            Util.resetAjaxRequests();
+            Util.mockRouterNavigate(test.router);
+            test.setNextWebfingerResponse(resSuccessOktaIDP);  
+            test.setNextResponse(resPasswordlessUnauthenticated);
+            test.form.setUsername('testuser@clouditude.net');
+            test.form.submit();
+            return Expect.waitForMfaVerify(test);
+          })
+          .then(function() {
+            expect(DeviceFingerprint.generateDeviceFingerprint).toHaveBeenCalled();
+            const ajaxArgs = Util.getAjaxRequest(0);
+            expect(ajaxArgs.requestHeaders['x-device-fingerprint']).toBe('thisIsTheDeviceFingerprint');
+          });
+      });
+    itp('renders primary auth with a device fingerprint when passwordless is disabled during idp discovery', 
+      function() {
+        spyOn(DeviceFingerprint, 'generateDeviceFingerprint').and.callFake(function() {
+          const deferred = Q.defer();
+          deferred.resolve('thisIsTheDeviceFingerprint');
+          return deferred.promise;
+        });
+        return setup({ features: {deviceFingerprinting: true}})
+          .then(function(test) {
+            Util.mockRouterNavigate(test.router);
+            test.setNextWebfingerResponse(resSuccessOktaIDP);  
+            test.setNextResponse(resUnauthenticated);
+            test.form.setUsername('testuser@clouditude.net');
+            test.form.submit();
+            return Expect.waitForPrimaryAuth(test);
+          })
+          .then(function(test) {
+            Util.resetAjaxRequests();
+            test.form.setPassword('pass');
+            test.form.submit();
+            test.setNextResponse(resSuccess);
+            return Expect.waitForSpyCall(test.successSpy, test);
+          })
+          .then(function() {
+            expect(DeviceFingerprint.generateDeviceFingerprint).toHaveBeenCalled();
+            const ajaxArgs = Util.getAjaxRequest(0);
+            expect(ajaxArgs.requestHeaders['x-device-fingerprint']).toBe('thisIsTheDeviceFingerprint');
+          });
+      });
+    itp('renders primary auth when device fingerprint generation fails', 
+      function() {
+        spyOn(DeviceFingerprint, 'generateDeviceFingerprint').and.callFake(function() {
+          const deferred = Q.defer();
+          deferred.reject('testFailure');
+          return deferred.promise;
+        });
+        return setup({ features: {deviceFingerprinting: true,  passwordlessAuth: true}, })
+          .then(function(test) {
+            Util.resetAjaxRequests();
+            Util.mockRouterNavigate(test.router);
+            test.setNextWebfingerResponse(resSuccessOktaIDP);  
+            test.setNextResponse(resPasswordlessUnauthenticated);
+            test.form.setUsername('testuser@clouditude.net');
+            test.form.submit();
+            return Expect.waitForMfaVerify(test);
+          })
+          .then(function() {
+            expect(DeviceFingerprint.generateDeviceFingerprint).toHaveBeenCalled();
+            const ajaxArgs = Util.getAjaxRequest(0);
+            expect(ajaxArgs.url).toBe('https://foo.com/api/v1/authn');
+            expect(ajaxArgs.requestHeaders['x-device-fingerprint']).toBeUndefined();
+          });
+      });
   });
 
   describe('events', function() {
@@ -1656,46 +1748,46 @@ Expect.describe('IDPDiscovery', function() {
     });
     itp('displays generic idp buttons', function() {
       return setupWith({ genericIdp: true }).then(function(test) {
-        expect(test.form.authDivider()).toHaveLength(1);
-        expect(test.form.additionalAuthButton()).toHaveLength(0);
-        expect(test.form.facebookButton()).toHaveLength(0);
-        expect(test.form.socialAuthButton('general-idp')).toHaveLength(1);
+        expect(test.form.authDivider().length).toEqual(1);
+        expect(test.form.additionalAuthButton().length).toEqual(0);
+        expect(test.form.facebookButton().length).toEqual(0);
+        expect(test.form.socialAuthButton('general-idp').length).toEqual(1);
         expect(test.form.forgotPasswordLinkVisible()).toBe(false);
       });
     });
     itp('displays generic idp and custom buttons', function() {
       return setupWith({ genericIdp: true, customButtons: true }).then(function(test) {
-        expect(test.form.authDivider()).toHaveLength(1);
-        expect(test.form.additionalAuthButton()).toHaveLength(1);
-        expect(test.form.facebookButton()).toHaveLength(0);
-        expect(test.form.socialAuthButton('general-idp')).toHaveLength(1);
+        expect(test.form.authDivider().length).toEqual(1);
+        expect(test.form.additionalAuthButton().length).toEqual(1);
+        expect(test.form.facebookButton().length).toEqual(0);
+        expect(test.form.socialAuthButton('general-idp').length).toEqual(1);
         expect(test.form.forgotPasswordLinkVisible()).toBe(false);
       });
     });
     itp('displays generic idp and social auth buttons', function() {
       return setupWith({ genericIdp: true, socialAuth: true }).then(function(test) {
-        expect(test.form.authDivider()).toHaveLength(1);
-        expect(test.form.additionalAuthButton()).toHaveLength(0);
-        expect(test.form.facebookButton()).toHaveLength(1);
-        expect(test.form.socialAuthButton('general-idp')).toHaveLength(1);
+        expect(test.form.authDivider().length).toEqual(1);
+        expect(test.form.additionalAuthButton().length).toEqual(0);
+        expect(test.form.facebookButton().length).toEqual(1);
+        expect(test.form.socialAuthButton('general-idp').length).toEqual(1);
         expect(test.form.forgotPasswordLinkVisible()).toBe(false);
       });
     });
     itp('displays generic idp, custom buttons, and social auth buttons', function() {
       return setupWith({ genericIdp: true, customButtons: true, socialAuth: true }).then(function(test) {
-        expect(test.form.authDivider()).toHaveLength(1);
-        expect(test.form.additionalAuthButton()).toHaveLength(1);
-        expect(test.form.facebookButton()).toHaveLength(1);
-        expect(test.form.socialAuthButton('general-idp')).toHaveLength(1);
+        expect(test.form.authDivider().length).toEqual(1);
+        expect(test.form.additionalAuthButton().length).toEqual(1);
+        expect(test.form.facebookButton().length).toEqual(1);
+        expect(test.form.socialAuthButton('general-idp').length).toEqual(1);
         expect(test.form.forgotPasswordLinkVisible()).toBe(false);
       });
     });
     itp('displays social auth and custom buttons', function() {
       return setupWithCustomButtonsWithIdp().then(function(test) {
-        expect(test.form.authDivider()).toHaveLength(1);
-        expect(test.form.additionalAuthButton()).toHaveLength(1);
-        expect(test.form.facebookButton()).toHaveLength(1);
-        expect(test.form.socialAuthButton('general-idp')).toHaveLength(0);
+        expect(test.form.authDivider().length).toEqual(1);
+        expect(test.form.additionalAuthButton().length).toEqual(1);
+        expect(test.form.facebookButton().length).toEqual(1);
+        expect(test.form.socialAuthButton('general-idp').length).toEqual(0);
         expect(test.form.forgotPasswordLinkVisible()).toBe(false);
       });
     });

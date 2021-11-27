@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
 /* eslint camelcase: 0 */
 import { _, $, internal } from 'okta';
-import createAuthClient from 'widget/createAuthClient';
+import getAuthClient from 'widget/getAuthClient';
 import Router from 'LoginRouter';
 import Duo from 'duo';
 import Beacon from 'helpers/dom/Beacon';
@@ -112,7 +112,7 @@ Expect.describe('MFA Verify', function() {
     }
   };
 
-  function createRouter(baseUrl, authClient, successSpy, settings) {
+  function createRouter(baseUrl, authClient, successSpy, settings, startRouter) {
     const router = new Router(
       _.extend(
         {
@@ -126,19 +126,27 @@ Expect.describe('MFA Verify', function() {
     );
 
     Util.registerRouter(router);
-    Util.mockRouterNavigate(router);
+    Util.mockRouterNavigate(router, startRouter);
     return router;
   }
 
-  function setup(res, selectedFactorProps, settings, languagesResponse, useResForIntrospect) {
+  async function setup(res, selectedFactorProps, settings, languagesResponse, useResForIntrospect, startRouter) {
     const setNextResponse = Util.mockAjax();
     const baseUrl = 'https://foo.com';
-    const authClient = createAuthClient({ issuer: baseUrl, transformErrorXHR: LoginUtil.transformErrorXHR });
+    const authClient = getAuthClient({
+      authParams: { issuer: baseUrl, transformErrorXHR: LoginUtil.transformErrorXHR }
+    });
     const successSpy = jasmine.createSpy('success');
     const afterErrorHandler = jasmine.createSpy('afterErrorHandler');
-    const router = createRouter(baseUrl, authClient, successSpy, settings);
+    const router = createRouter(baseUrl, authClient, successSpy, settings, startRouter);
 
     router.on('afterError', afterErrorHandler);
+    if (startRouter) {
+      if (typeof startRouter !== 'boolean') {
+        throw new Error('startRouter parameter should be boolean');
+      }
+      await Expect.waitForPrimaryAuth();
+    }
     const resp = resAllFactors;
 
     setNextResponse(res);
@@ -146,68 +154,72 @@ Expect.describe('MFA Verify', function() {
       setNextResponse(languagesResponse);
     }
     router.refreshAuthState('dummy-token');
-    return Expect.waitForMfaVerify()
-      .then(function() {
-        if (selectedFactorProps) {
-          const factors = router.appState.get('factors');
-          const selectedFactor = factors.findWhere(selectedFactorProps);
-          const provider = selectedFactor.get('provider');
-          const factorType = selectedFactor.get('factorType');
+    await Expect.waitForMfaVerify();
 
-          if (provider === 'DUO' && factorType === 'web') {
-            setNextResponse(resChallengeDuo);
-            router.verifyDuo();
-            return Expect.waitForVerifyDuo();
-          } else if (provider === 'FIDO' && factorType === 'webauthn') {
-            setNextResponse(resChallengeWindowsHello);
-            router.verifyWebauthn();
-            return Expect.waitForVerifyWindowsHello();
-          } else if (provider === 'GENERIC_SAML' && factorType === 'assertion:saml2') {
-            setNextResponse(resChallengeCustomSAMLFactor);
-            router.verifySAMLFactor();
-            return Expect.waitForVerifyCustomFactor();
-          } else if (provider === 'GENERIC_OIDC' && factorType === 'assertion:oidc') {
-            setNextResponse(resChallengeCustomOIDCFactor);
-            router.verifyOIDCFactor();
-            return Expect.waitForVerifyCustomFactor();
-          } else if (provider === 'CUSTOM' && factorType === 'claims_provider') {
-            setNextResponse(resChallengeClaimsProvider);
-            router.verifyClaimsFactor();
-            return Expect.waitForVerifyCustomFactor();
-          } else {
-            router.verify(selectedFactor.get('provider'), selectedFactor.get('factorType'));
-            return Expect.waitForMfaVerify();
-          }
-        }
-      })
-      .then(function() {
-        const $forms = $sandbox.find('.o-form');
+    if (selectedFactorProps) {
+      const factors = router.appState.get('factors');
+      const selectedFactor = factors.findWhere(selectedFactorProps);
+      const provider = selectedFactor.get('provider');
+      const factorType = selectedFactor.get('factorType');
 
-        let forms = _.map($forms, function(form) {
-          return new MfaVerifyForm($(form));
-        });
+      if (provider === 'DUO' && factorType === 'web') {
+        setNextResponse(resChallengeDuo);
+        router.verifyDuo();
+        await Expect.waitForVerifyDuo();
+      } else if (provider === 'FIDO' && factorType === 'webauthn') {
+        setNextResponse(resChallengeWindowsHello);
+        router.verifyWebauthn();
+        await Expect.waitForVerifyWindowsHello();
+      } else if (provider === 'GENERIC_SAML' && factorType === 'assertion:saml2') {
+        setNextResponse(resChallengeCustomSAMLFactor);
+        router.verifySAMLFactor();
+        await Expect.waitForVerifyCustomFactor();
+      } else if (provider === 'GENERIC_OIDC' && factorType === 'assertion:oidc') {
+        setNextResponse(resChallengeCustomOIDCFactor);
+        router.verifyOIDCFactor();
+        await Expect.waitForVerifyCustomFactor();
+      } else if (provider === 'CUSTOM' && factorType === 'claims_provider') {
+        setNextResponse(resChallengeClaimsProvider);
+        router.verifyClaimsFactor();
+        await Expect.waitForVerifyCustomFactor();
+      } else {
+        router.verify(selectedFactor.get('provider'), selectedFactor.get('factorType'));
+        // BaseLoginController returns an instance of Q() from `fetchInitialData`
+        // use tick() to wait for this promise to resolve and render
+        await tick();
+        await Expect.waitForMfaVerify();
+      }
+    }
 
-        if (forms.length === 1) {
-          forms = forms[0];
-        }
-        const beacon = new Beacon($sandbox);
+    const $forms = $sandbox.find('.o-form');
 
-        return {
-          router: router,
-          form: forms,
-          beacon: beacon,
-          ac: authClient,
-          setNextResponse: setNextResponse,
-          successSpy: successSpy,
-          afterErrorHandler: afterErrorHandler,
-        };
-      });
+    let forms = _.map($forms, function(form) {
+      return new MfaVerifyForm($(form));
+    });
+
+    if (forms.length === 1) {
+      forms = forms[0];
+    }
+    const beacon = new Beacon($sandbox);
+
+    return {
+      router: router,
+      form: forms,
+      beacon: beacon,
+      ac: authClient,
+      setNextResponse: setNextResponse,
+      successSpy: successSpy,
+      afterErrorHandler: afterErrorHandler,
+    };
+    
   }
 
-  function setupNoProvider(res, selectedFactorProps, settings) {
+  async function setupNoProvider(res, selectedFactorProps, settings) {
     const setNextResponse = Util.mockAjax();
     const baseUrl = 'https://foo.com';
-    const authClient = createAuthClient({ issuer: baseUrl, transformErrorXHR: LoginUtil.transformErrorXHR });
+    const authClient = getAuthClient({
+      authParams: { issuer: baseUrl, transformErrorXHR: LoginUtil.transformErrorXHR }
+    });
     const successSpy = jasmine.createSpy('success');
     const afterErrorHandler = jasmine.createSpy('afterErrorHandler');
     const router = createRouter(baseUrl, authClient, successSpy, settings);
@@ -215,45 +227,48 @@ Expect.describe('MFA Verify', function() {
     router.on('afterError', afterErrorHandler);
     setNextResponse(res);
     router.refreshAuthState('dummy-token');
-    return Expect.waitForMfaVerify()
-      .then(function() {
-        if (selectedFactorProps) {
-          const factors = router.appState.get('factors');
-          const selectedFactor = factors.findWhere(selectedFactorProps);
-          const factorType = selectedFactor.get('factorType');
+    await Expect.waitForMfaVerify();
 
-          router.verifyNoProvider(factorType);
-          return Expect.waitForMfaVerify();
-        }
-      })
-      .then(function() {
-        const $forms = $sandbox.find('.o-form');
+    if (selectedFactorProps) {
+      const factors = router.appState.get('factors');
+      const selectedFactor = factors.findWhere(selectedFactorProps);
+      const factorType = selectedFactor.get('factorType');
 
-        let forms = _.map($forms, function(form) {
-          return new MfaVerifyForm($(form));
-        });
+      router.verifyNoProvider(factorType);
+      // BaseLoginController returns an instance of Q() from `fetchInitialData`
+      // use tick() to wait for this promise to resolve and render
+      await tick();
+      await Expect.waitForMfaVerify();
+    }
 
-        if (forms.length === 1) {
-          forms = forms[0];
-        }
-        const beacon = new Beacon($sandbox);
+    const $forms = $sandbox.find('.o-form');
 
-        return {
-          router: router,
-          form: forms,
-          beacon: beacon,
-          ac: authClient,
-          setNextResponse: setNextResponse,
-          successSpy: successSpy,
-          afterErrorHandler: afterErrorHandler,
-        };
-      });
+    let forms = _.map($forms, function(form) {
+      return new MfaVerifyForm($(form));
+    });
+
+    if (forms.length === 1) {
+      forms = forms[0];
+    }
+    const beacon = new Beacon($sandbox);
+
+    return {
+      router: router,
+      form: forms,
+      beacon: beacon,
+      ac: authClient,
+      setNextResponse: setNextResponse,
+      successSpy: successSpy,
+      afterErrorHandler: afterErrorHandler,
+    };
   }
 
   function setupWindowsHelloOnly() {
     const setNextResponse = Util.mockAjax();
     const baseUrl = 'https://foo.com';
-    const authClient = createAuthClient({ issuer: baseUrl, transformErrorXHR: LoginUtil.transformErrorXHR });
+    const authClient = getAuthClient({
+      authParams: { issuer: baseUrl, transformErrorXHR: LoginUtil.transformErrorXHR }
+    });
     const successSpy = jasmine.createSpy('success');
     const router = createRouter(baseUrl, authClient, successSpy);
 
@@ -323,7 +338,10 @@ Expect.describe('MFA Verify', function() {
 
   const setupOktaPushWithTOTP = _.partial(setup, resAllFactors, { factorType: 'push', provider: 'OKTA' });
 
-  const setupOktaTOTP = _.partial(setup, resVerifyTOTPOnly, { factorType: 'token:software:totp' }, null, null, true);
+  const setupOktaTOTP = function(settings) {
+    settings = Object.assign({ factorType: 'token:software:totp' }, settings);
+    return setup(resVerifyTOTPOnly, null, { factorType: 'token:software:totp' });
+  };
 
   const setupOktaPush = _.partial(setup, resVerifyPushOnly, { factorType: 'push' });
 
@@ -346,7 +364,10 @@ Expect.describe('MFA Verify', function() {
     { 'features.webauthn': false, brandName: 'Spaghetti Inc.' }
   );
 
-  const setupPassword = _.partial(setup, resPassword, { factorType: 'password' }, null, null, true);
+  const setupPassword = function(settings = {}) {
+    settings = Object.assign({ factorType: 'password' }, settings);
+    return setup(resPassword, null, settings);
+  };
 
   const setupCustomSAMLFactor = _.partial(setup, resAllFactors, {
     factorType: 'assertion:saml2',
@@ -363,10 +384,13 @@ Expect.describe('MFA Verify', function() {
     provider: 'CUSTOM',
   });
 
-  const setupAllFactorsWithRouter = _.partial(setup, resAllFactors, null, {
-    'features.router': true,
-    'features.securityImage': true,
-  });
+  const setupAllFactorsWithRouter = _.partial(setup, resAllFactors, null,
+    {
+      'features.router': true,
+      'features.securityImage': true,
+    }, null, false,
+    true // start router
+  );
 
   function setupSecurityQuestionLocalized(options) {
     spyOn(BrowserFeatures, 'localStorageIsNotSupported').and.returnValue(options.localStorageIsNotSupported);
@@ -396,7 +420,7 @@ Expect.describe('MFA Verify', function() {
     return setup(pushOnly, { factorType: 'push' }, settings, null, true);
   }
 
-  function setupU2F(options) {
+  async function setupU2F(options) {
     options || (options = {});
 
     if (options.u2f) {
@@ -416,22 +440,19 @@ Expect.describe('MFA Verify', function() {
       delete window.u2f;
     }
 
-    return setup(options.nextResponse ? options.nextResponse : resAllFactors, null, options.settings, null, true)
-      .then(function(test) {
-        const responses = options.multipleU2F ? [resChallengeMultipleU2F] : [resChallengeU2F];
-
-        if (options && options.res) {
-          responses.push(options.res);
-        }
-        test.setNextResponse(responses);
-        test.router.verifyU2F();
-        return Expect.waitForVerifyU2F(test);
-      })
-      .then(function(test) {
-        return _.extend(test, {
-          form: new MfaVerifyForm($sandbox.find('.o-form')),
-        });
-      });
+    const test = await setup(options.nextResponse ? options.nextResponse : resAllFactors, null, options.settings, null, true);
+    const responses = options.multipleU2F ? [resChallengeMultipleU2F] : [resChallengeU2F];
+    if (options && options.res) {
+      responses.push(options.res);
+    }
+    test.setNextResponse(responses);
+    test.router.verifyU2F();
+    // BaseLoginController returns an instance of Q() from `fetchInitialData`
+    // use tick() to wait for this promise to resolve and render
+    await tick();
+    await Expect.waitForVerifyU2F();
+    test.form = new MfaVerifyForm($sandbox.find('.o-form'));
+    return test;
   }
 
   function setupMultipleU2F(options) {
@@ -463,7 +484,9 @@ Expect.describe('MFA Verify', function() {
 
     const setNextResponse = Util.mockAjax();
     const baseUrl = 'https://foo.com';
-    const authClient = createAuthClient({ issuer: baseUrl, transformErrorXHR: LoginUtil.transformErrorXHR });
+    const authClient = getAuthClient({
+      authParams: { issuer: baseUrl, transformErrorXHR: LoginUtil.transformErrorXHR }
+    });
     const successSpy = jasmine.createSpy('success');
     const afterErrorHandler = jasmine.createSpy('afterErrorHandler');
     const router = createRouter(baseUrl, authClient, successSpy);
@@ -500,14 +523,21 @@ Expect.describe('MFA Verify', function() {
     });
   }
 
-  function setupMfaChallengeClaimsFactor(options) {
+  async function setupMfaChallengeClaimsFactor(options) {
+    // BaseLoginRouter will render twice if language bundles are not loaded:
+    // https://github.com/okta/okta-signin-widget/blob/master/src/util/BaseLoginRouter.js#L202
+    // We are not testing i18n, so we can mock language bundles as loaded
+    Util.mockBundles();
+
     options = options || {};
     const initResponse = getInitialChallengeResponse(options);
     const setNextResponse = Util.mockAjax([initResponse, resAllFactors]);
     //get MFA_CHALLENGE, and routerUtil calls prev, to set state to MFA_REQUIRED
 
     const baseUrl = 'https://foo.com';
-    const authClient = createAuthClient({ issuer: baseUrl, transformErrorXHR: LoginUtil.transformErrorXHR });
+    const authClient = getAuthClient({
+      authParams: { issuer: baseUrl, transformErrorXHR: LoginUtil.transformErrorXHR }
+    });
     const successSpy = jasmine.createSpy('success');
     const afterErrorHandler = jasmine.createSpy('afterErrorHandler');
     const router = createRouter(baseUrl, authClient, successSpy, options.settings);
@@ -515,29 +545,25 @@ Expect.describe('MFA Verify', function() {
     router.on('afterError', afterErrorHandler);
     router.refreshAuthState('dummy-token');
     const verifyView = options.factorResult === 'FAILED' ? 'waitForVerifyCustomFactor' : 'waitForMfaVerify';
-
-    return Expect[verifyView]().then(function() {
-      const $forms = $sandbox.find('.o-form');
-
-      let forms = _.map($forms, function(form) {
-        return new MfaVerifyForm($(form));
-      });
-
-      if (forms.length === 1) {
-        forms = forms[0];
-      }
-      const beacon = new Beacon($sandbox);
-
-      return {
-        router: router,
-        form: forms,
-        beacon: beacon,
-        ac: authClient,
-        setNextResponse: setNextResponse,
-        successSpy: successSpy,
-        afterErrorHandler: afterErrorHandler,
-      };
+    await Expect[verifyView]();
+    const $forms = $sandbox.find('.o-form');
+    let forms = _.map($forms, function(form) {
+      return new MfaVerifyForm($(form));
     });
+    if (forms.length === 1) {
+      forms = forms[0];
+    }
+    const beacon = new Beacon($sandbox);
+    const test = {
+      router: router,
+      form: forms,
+      beacon: beacon,
+      ac: authClient,
+      setNextResponse: setNextResponse,
+      successSpy: successSpy,
+      afterErrorHandler: afterErrorHandler,
+    };
+    return test;
   }
 
   function getInitialChallengeResponse(options) {
@@ -558,6 +584,9 @@ Expect.describe('MFA Verify', function() {
   }
 
   function emulateWindows(errorType) {
+    if (errorType) {
+      Q.stopUnhandledRejectionTracking();
+    }
     spyOn(webauthn, 'isAvailable').and.returnValue(true);
 
     spyOn(webauthn, 'getAssertion').and.callFake(function() {
@@ -678,7 +707,7 @@ Expect.describe('MFA Verify', function() {
     // 3: Set for verifyFactor poll finish
     test.setNextResponse([resChallengePush, firstPollResponse || resChallengePush, finalResponse]);
 
-    // View contains 2 forms when push and totp are avaiable
+    // View contains 2 forms when push and totp are available
     // For polling we are only interested in the push form.
     if (test.form.length > 0) {
       test.form = test.form[0];
@@ -948,7 +977,7 @@ Expect.describe('MFA Verify', function() {
         });
     });
     itp('Verify Push after switching from Google TOTP', function() {
-      return setupGoogleTOTPAutoPushTrueFn({ 'features.autoPush': true })
+      return setupGoogleTOTPAutoPushTrueFn()
         .then(function(test) {
           test.setNextResponse(resChallengePush);
           test.beacon.dropDownButton().click();
@@ -1511,6 +1540,7 @@ Expect.describe('MFA Verify', function() {
           expect(test.form.errorMessage()).toBe('Your account is locked because of too many authentication attempts.');
           expectErrorEvent(test, 403, 'User Locked', 'mfa-verify', {
             status: 403,
+            headers: { 'content-type': 'application/json' },
             responseType: 'json',
             responseText: '{"errorCode":"E0000069","errorSummary":"User Locked","errorLink":"E0000069","errorId":"oaeGLSGT-QCT_ijvM0RT6SV0A","errorCauses":[]}',
             responseJSON: {
@@ -1838,6 +1868,7 @@ Expect.describe('MFA Verify', function() {
           expect(test.form.errorMessage()).toBe('Your account is locked because of too many authentication attempts.');
           expectErrorEvent(test, 403, 'User Locked', 'mfa-verify', {
             status: 403,
+            headers: { 'content-type': 'application/json' },
             responseType: 'json',
             responseText: '{"errorCode":"E0000069","errorSummary":"User Locked","errorLink":"E0000069","errorId":"oaeGLSGT-QCT_ijvM0RT6SV0A","errorCauses":[]}',
             responseJSON: {
@@ -2056,6 +2087,7 @@ Expect.describe('MFA Verify', function() {
         .then(function(test) {
           expectError(test, 403, 'Invalid Passcode/Answer', 'mfa-verify', {
             status: 403,
+            headers: { 'content-type': 'application/json' },
             responseType: 'json',
             responseText: '{"errorCode":"E0000068","errorSummary":"Invalid Passcode/Answer","errorLink":"E0000068","errorId":"oael69itLSMTbioahsUZ-7xiQ","errorCauses":[]}',
             responseJSON: {
@@ -2215,6 +2247,7 @@ Expect.describe('MFA Verify', function() {
           expect(test.form.errorMessage()).toBe('Password is incorrect');
           expectErrorEvent(test, 403, 'Invalid Passcode/Answer', 'mfa-verify', {
             status: 403,
+            headers: { 'content-type': 'application/json' },
             responseType: 'json',
             responseText: '{"errorCode":"E0000068","errorSummary":"Invalid Passcode/Answer","errorLink":"E0000068","errorId":"oael69itLSMTbioahsUZ-7xiQ","errorCauses":[{"errorSummary":"Password is incorrect"}]}',
             responseJSON: {
@@ -2370,6 +2403,12 @@ Expect.describe('MFA Verify', function() {
       itp('is visible', function() {
         return setupWithFirstFactor({ factorType: 'question' }).then(function(test) {
           Expect.isVisible(test.form.signoutLink($sandbox));
+          expect(test.form.signoutLink($sandbox).text()).toBe('Back to sign in');
+        });
+      });
+      itp('text is "Back to sign in"', function() {
+        return setupWithFirstFactor({ factorType: 'question' }).then(function(test) {
+          expect(test.form.signoutLink($sandbox).text()).toBe('Back to sign in');
         });
       });
       itp('is not present if features.hideSignOutLinkInMFA is true', function() {
@@ -2496,6 +2535,12 @@ Expect.describe('MFA Verify', function() {
     });
 
     Expect.describe('TOTP', function() {
+      beforeEach(() => {
+        // BaseLoginRouter will render twice if language bundles are not loaded:
+        // https://github.com/okta/okta-signin-widget/blob/master/src/util/BaseLoginRouter.js#L202
+        // We are not testing i18n, so we can mock language bundles as loaded
+        Util.mockBundles();
+      });
       testGoogleTOTP(setupGoogleTOTP, 'testStateToken');
       itp('shows the right beacon for Okta TOTP', function() {
         return setupOktaTOTP().then(function(test) {
@@ -2563,6 +2608,7 @@ Expect.describe('MFA Verify', function() {
           .then(function(test) {
             expectError(test, 409, 'Enter a new PIN having from 4 to 8 digits:', 'mfa-verify', {
               status: 409,
+              headers: { 'content-type': 'application/json' },
               responseType: 'json',
               responseText: '{"errorCode":"E0000113","errorSummary":"Enter a new PIN having from 4 to 8 digits:","errorLink":"E0000113","errorId":"errorId","errorCauses":[]}',
               responseJSON: {
@@ -3640,7 +3686,7 @@ Expect.describe('MFA Verify', function() {
             .then(function(form) {
               form.setAnswer('');
               // clicks are throttled with 100ms.
-              // _.thrrottle cannot be mocked by jasmine.clock.tick
+              // _.throttle cannot be mocked by jasmine.clock.tick
               // hence using real timeout of 100ms.
               setTimeout(() => {
                 form.inlineTOTPVerify().click();
@@ -3739,6 +3785,7 @@ Expect.describe('MFA Verify', function() {
       itp('has a sign out link', function() {
         return setupDuo().then(function(test) {
           Expect.isVisible(test.form.signoutLink($sandbox));
+          expect(test.form.signoutLink($sandbox).text()).toBe('Back to sign in');
         });
       });
       itp('does not have sign out link if features.hideSignOutLinkInMFA is true', function() {
@@ -3848,6 +3895,7 @@ Expect.describe('MFA Verify', function() {
       itp('has a sign out link', function() {
         return setupWindowsHello().then(function(test) {
           Expect.isVisible(test.form.signoutLink($sandbox));
+          expect(test.form.signoutLink($sandbox).text()).toBe('Back to sign in');
         });
       });
       itp('does not have sign out link if features.hideSignOutLinkInMFA is true', function() {
@@ -4019,7 +4067,7 @@ Expect.describe('MFA Verify', function() {
 
       itp('shows error if browser does not support u2f', function() {
         return setupU2F({ u2f: false }).then(function(test) {
-          expect(test.form.el('o-form-error-html')).toHaveLength(1);
+          expect(test.form.el('o-form-error-html').length).toEqual(1);
           expect(test.form.el('o-form-error-html').find('strong').html()).toEqual(
             'Security Key (U2F) is not supported on this browser. ' +
               'Select another factor or contact your admin for assistance.'
@@ -4029,7 +4077,7 @@ Expect.describe('MFA Verify', function() {
 
       itp('shows error if browser does not support u2f and only one factor', function() {
         return setupU2F({ u2f: false, nextResponse: resU2F }).then(function(test) {
-          expect(test.form.el('o-form-error-html')).toHaveLength(1);
+          expect(test.form.el('o-form-error-html').length).toEqual(1);
           expect(test.form.el('o-form-error-html').find('strong').html()).toEqual(
             'Security Key (U2F) is not supported on this browser. Contact your admin for assistance.'
           );
@@ -4038,7 +4086,7 @@ Expect.describe('MFA Verify', function() {
 
       itp('does not show error if browser supports u2f', function() {
         return setupU2F({ u2f: true }).then(function(test) {
-          expect(test.form.el('o-form-error-html')).toHaveLength(0);
+          expect(test.form.el('o-form-error-html').length).toEqual(0);
         });
       });
 
@@ -4058,6 +4106,7 @@ Expect.describe('MFA Verify', function() {
       itp('has a sign out link', function() {
         return setupU2F({ u2f: true }).then(function(test) {
           Expect.isVisible(test.form.signoutLink($sandbox));
+          expect(test.form.signoutLink($sandbox).text()).toBe('Back to sign in');
         });
       });
       itp('does not have sign out link if features.hideSignOutLinkInMFA is true', function() {
@@ -4230,6 +4279,7 @@ Expect.describe('MFA Verify', function() {
               'verify-custom-factor custom-factor-form',
               {
                 status: 403,
+                headers: { 'content-type': 'application/json' },
                 responseType: 'json',
                 responseText: '{"errorCode":"E0000006","errorSummary":"You do not have permission to perform the requested action","errorLink":"E0000006","errorId":"oae3CaVvE33SqKyymZRyUWE7Q","errorCauses":[]}',
                 responseJSON: {
@@ -4318,6 +4368,7 @@ Expect.describe('MFA Verify', function() {
               'verify-custom-factor custom-factor-form',
               {
                 status: 403,
+                headers: { 'content-type': 'application/json' },
                 responseType: 'json',
                 responseText: '{"errorCode":"E0000006","errorSummary":"You do not have permission to perform the requested action","errorLink":"E0000006","errorId":"oae3CaVvE33SqKyymZRyUWE7Q","errorCauses":[]}',
                 responseJSON: {
@@ -4380,6 +4431,7 @@ Expect.describe('MFA Verify', function() {
       itp('has a sign out link', function() {
         return setupClaimsProviderFactorWithIntrospect().then(function(test) {
           Expect.isVisible(test.form.signoutLink($sandbox));
+          expect(test.form.signoutLink($sandbox).text()).toBe('Back to sign in');
         });
       });
       itp('does not have sign out link if features.hideSignOutLinkInMFA is true', function() {
@@ -4421,6 +4473,7 @@ Expect.describe('MFA Verify', function() {
               'verify-custom-factor custom-factor-form',
               {
                 status: 403,
+                headers: { 'content-type': 'application/json' },
                 responseType: 'json',
                 responseText: '{"errorCode":"E0000006","errorSummary":"You do not have permission to perform the requested action","errorLink":"E0000006","errorId":"oae3CaVvE33SqKyymZRyUWE7Q","errorCauses":[]}',
                 responseJSON: {
@@ -4490,6 +4543,7 @@ Expect.describe('MFA Verify', function() {
         itp('has a sign out link if factorResult FAILED', function() {
           return setupMfaChallengeClaimsFactor(this.options).then(function(test) {
             Expect.isVisible(test.form.signoutLink($sandbox));
+            expect(test.form.signoutLink($sandbox).text()).toBe('Back to sign in');
           });
         });
         itp('does not have sign out link if features.hideSignOutLinkInMFA is true', function() {
@@ -4533,6 +4587,7 @@ Expect.describe('MFA Verify', function() {
                 'verify-custom-factor custom-factor-form',
                 {
                   status: 403,
+                  headers: { 'content-type': 'application/json' },
                   responseType: 'json',
                   responseText: '{"errorCode":"E0000006","errorSummary":"You do not have permission to perform the requested action","errorLink":"E0000006","errorId":"oae3CaVvE33SqKyymZRyUWE7Q","errorCauses":[]}',
                   responseJSON: {
@@ -4568,12 +4623,12 @@ Expect.describe('MFA Verify', function() {
         itp('does not display error and loads first factor when factorResult is not returned', function() {
           return setupMfaChallengeClaimsFactor().then(function(test) {
             expect(test.form.isSecurityQuestion()).toBe(true);
-            expect(test.form.el('o-form-error-html')).toHaveLength(0);
+            expect(test.form.el('o-form-error-html').length).toEqual(0);
           });
         });
         itp('displays error when factorResult is FAILED', function() {
           return setupMfaChallengeClaimsFactor(this.options).then(function(test) {
-            expect(test.form.el('o-form-error-html')).toHaveLength(1);
+            expect(test.form.el('o-form-error-html').length).toEqual(1);
             expect(test.form.el('o-form-error-html').find('strong').html()).toEqual('Verify failed.');
           });
         });
@@ -4585,7 +4640,7 @@ Expect.describe('MFA Verify', function() {
           };
           return setupMfaChallengeClaimsFactor(this.options).then(function(test) {
             expect(test.form.isSecurityQuestion()).toBe(true);
-            expect(test.form.el('o-form-error-html')).toHaveLength(0);
+            expect(test.form.el('o-form-error-html').length).toEqual(0);
           });
         });
         itp('does not display error when factorResult is undefined', function() {
@@ -4595,7 +4650,7 @@ Expect.describe('MFA Verify', function() {
           };
           return setupMfaChallengeClaimsFactor(this.options).then(function(test) {
             expect(test.form.isSecurityQuestion()).toBe(true);
-            expect(test.form.el('o-form-error-html')).toHaveLength(0);
+            expect(test.form.el('o-form-error-html').length).toEqual(0);
           });
         });
         itp('displays default error when factorResultMessage is undefined', function() {
@@ -4604,7 +4659,7 @@ Expect.describe('MFA Verify', function() {
             factorResult: 'FAILED',
           };
           return setupMfaChallengeClaimsFactor(this.options).then(function(test) {
-            expect(test.form.el('o-form-error-html')).toHaveLength(1);
+            expect(test.form.el('o-form-error-html').length).toEqual(1);
             expect(test.form.el('o-form-error-html').find('strong').html()).toEqual(
               'There was an unexpected internal error. Please try again.'
             );
@@ -4660,7 +4715,7 @@ Expect.describe('MFA Verify', function() {
               .then(function(test) {
                 test.claimsForm = new MfaVerifyForm($sandbox.find('.o-form'));
                 expect(test.claimsForm.isCustomFactor()).toBe(true);
-                expect(test.claimsForm.el('o-form-error-html')).toHaveLength(0);
+                expect(test.claimsForm.el('o-form-error-html').length).toEqual(0);
                 test.setNextResponse([resChallengeClaimsProvider, resSuccess]);
                 test.claimsForm.submit();
                 return Expect.waitForSpyCall(SharedUtil.redirect);
@@ -4675,6 +4730,12 @@ Expect.describe('MFA Verify', function() {
       });
     });
     Expect.describe('Password', function() {
+      beforeEach(() => {
+        // BaseLoginRouter will render twice if language bundles are not loaded:
+        // https://github.com/okta/okta-signin-widget/blob/master/src/util/BaseLoginRouter.js#L202
+        // We are not testing i18n, so we can mock language bundles as loaded
+        Util.mockBundles();
+      });
       testPassword(setupPassword, 'testStateToken');
     });
   });
@@ -4753,6 +4814,12 @@ Expect.describe('MFA Verify', function() {
   }
 
   Expect.describe('Beacon', function() {
+    beforeEach(() => {
+      // BaseLoginRouter will render twice if language bundles are not loaded:
+      // https://github.com/okta/okta-signin-widget/blob/master/src/util/BaseLoginRouter.js#L202
+      // We are not testing i18n, so we can mock language bundles as loaded
+      Util.mockBundles();
+    });
     beaconTest(resAllFactors, resVerifyTOTPOnly, resAllFactorsOnPrem);
   });
 
@@ -4880,11 +4947,15 @@ Expect.describe('MFA Verify', function() {
   });
 
   Expect.describe('Browser back button does not change view', function() {
+    beforeEach(() => {
+      // BaseLoginRouter will render twice if language bundles are not loaded:
+      // https://github.com/okta/okta-signin-widget/blob/master/src/util/BaseLoginRouter.js#L202
+      // We are not testing i18n in this file, so we can mock language bundles as loaded
+      Util.mockBundles();
+    });
     itp('from mfa verify controller', function() {
       return setupAllFactorsWithRouter()
         .then(function(test) {
-          spyOn(window, 'addEventListener');
-          test.router.start();
           expectHasRightBeaconImage(test, 'mfa-okta-security-question');
           test.beacon.dropDownButton().click();
           clickFactorInDropdown(test, 'SMS');
@@ -4903,37 +4974,29 @@ Expect.describe('MFA Verify', function() {
           Util.stopRouter();
         });
     });
-    itp('from duo controller', function() {
-      return setupAllFactorsWithRouter()
-        .then(function(test) {
-          spyOn(window, 'addEventListener');
-          test.router.start();
-          expectHasRightBeaconImage(test, 'mfa-okta-security-question');
-          spyOn(Duo, 'init');
-          test.setNextResponse(resChallengeDuo);
-          test.beacon.dropDownButton().click();
-          clickFactorInDropdown(test, 'DUO');
-          return Expect.wait(function() {
-            return test.beacon.hasClass('mfa-duo');
-          }, test);
-        })
-        .then(function(test) {
-          expectHasRightBeaconImage(test, 'mfa-duo');
-          Util.triggerBrowserBackButton();
-          return tick(test);
-        })
-        .then(function(test) {
-          //view is still the same
-          expectHasRightBeaconImage(test, 'mfa-duo');
-          Util.stopRouter();
-        });
+    itp('from duo controller', async function() {
+      const test = await setupAllFactorsWithRouter();
+      expectHasRightBeaconImage(test, 'mfa-okta-security-question');
+      spyOn(Duo, 'init');
+      test.setNextResponse(resChallengeDuo);
+      test.beacon.dropDownButton().click();
+      clickFactorInDropdown(test, 'DUO');
+      await Expect.wait(function() {
+        return test.beacon.hasClass('mfa-duo');
+      });
+
+      expectHasRightBeaconImage(test, 'mfa-duo');
+      Util.triggerBrowserBackButton();
+      await tick();
+
+      //view is still the same
+      expectHasRightBeaconImage(test, 'mfa-duo');
+      Util.stopRouter();
     });
     itp('from windows hello controller', function() {
       return emulateWindows()
         .then(setupAllFactorsWithRouter)
         .then(function(test) {
-          spyOn(window, 'addEventListener');
-          test.router.start();
           expectHasRightBeaconImage(test, 'mfa-okta-security-question');
           test.setNextResponse(resChallengeWindowsHello);
           test.beacon.dropDownButton().click();
@@ -4956,8 +5019,6 @@ Expect.describe('MFA Verify', function() {
     itp('from u2f controller', function() {
       return setupAllFactorsWithRouter()
         .then(function(test) {
-          spyOn(window, 'addEventListener');
-          test.router.start();
           expectHasRightBeaconImage(test, 'mfa-okta-security-question');
           return test;
         })
@@ -5076,6 +5137,13 @@ Expect.describe('MFA Verify', function() {
     });
 
     Expect.describe('Only multiple Security Keys (U2F) are setup', function() {
+      beforeEach(() => {
+        // BaseLoginRouter will render twice if language bundles are not loaded:
+        // https://github.com/okta/okta-signin-widget/blob/master/src/util/BaseLoginRouter.js#L202
+        // We are not testing i18n in this file, so we can mock language bundles as loaded
+        Util.mockBundles();
+      });
+
       itp('shows the right beacon for Security Key (U2F)', function() {
         return setupMultipleU2FOnly({ u2f: true }).then(function(test) {
           expectHasRightBeaconImage(test, 'mfa-u2f');
@@ -5092,7 +5160,7 @@ Expect.describe('MFA Verify', function() {
 
       itp('shows error if browser does not support u2f', function() {
         return setupMultipleU2FOnly({ u2f: false }).then(function(test) {
-          expect(test.form.el('o-form-error-html')).toHaveLength(1);
+          expect(test.form.el('o-form-error-html').length).toEqual(1);
           expect(test.form.el('o-form-error-html').find('strong').html()).toEqual(
             'Security Key (U2F) is not supported on this browser. ' + 'Contact your admin for assistance.'
           );
@@ -5101,7 +5169,7 @@ Expect.describe('MFA Verify', function() {
 
       itp('does not show error if browser supports u2f', function() {
         return setupMultipleU2FOnly({ u2f: true }).then(function(test) {
-          expect(test.form.el('o-form-error-html')).toHaveLength(0);
+          expect(test.form.el('o-form-error-html').length).toEqual(0);
         });
       });
 
@@ -5247,7 +5315,7 @@ Expect.describe('MFA Verify', function() {
 
       itp('shows error if browser does not support u2f', function() {
         return setupMultipleU2F({ u2f: false }).then(function(test) {
-          expect(test.form.el('o-form-error-html')).toHaveLength(1);
+          expect(test.form.el('o-form-error-html').length).toEqual(1);
           expect(test.form.el('o-form-error-html').find('strong').html()).toEqual(
             'Security Key (U2F) is not supported on this browser. ' +
               'Select another factor or contact your admin for assistance.'
@@ -5257,7 +5325,7 @@ Expect.describe('MFA Verify', function() {
 
       itp('does not show error if browser supports u2f', function() {
         return setupMultipleU2F({ u2f: true }).then(function(test) {
-          expect(test.form.el('o-form-error-html')).toHaveLength(0);
+          expect(test.form.el('o-form-error-html').length).toEqual(0);
         });
       });
 
@@ -5387,6 +5455,13 @@ Expect.describe('MFA Verify', function() {
     });
 
     Expect.describe('Okta Verify TOTP', function() {
+      beforeEach(() => {
+        // BaseLoginRouter will render twice if language bundles are not loaded:
+        // https://github.com/okta/okta-signin-widget/blob/master/src/util/BaseLoginRouter.js#L202
+        // We are not testing i18n, so we can mock language bundles as loaded
+        Util.mockBundles();
+      });
+
       itp('shows the right beacon', function() {
         return setupMultipleOktaTOTP().then(function(test) {
           expectHasRightBeaconImage(test, 'mfa-okta-verify');

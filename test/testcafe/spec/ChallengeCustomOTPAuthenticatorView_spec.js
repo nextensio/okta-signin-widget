@@ -38,6 +38,7 @@ test.requestHooks(mockChallengeAuthenticatorCustomOTP)('challenge custom OTP aut
   const saveBtnText = challengeCustomOTPPage.getSaveButtonLabel();
   await t.expect(saveBtnText).contains('Verify');
   await t.expect(pageTitle).contains('Verify with Atko Custom OTP Authenticator');
+  await t.expect(challengeCustomOTPPage.getFormSubtitle()).eql('Enter the code generated on your authenticator and verify.');
 
   // verify otp
   await challengeCustomOTPPage.verifyFactor('credentials.passcode', '1234');

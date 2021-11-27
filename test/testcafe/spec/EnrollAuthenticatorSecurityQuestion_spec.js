@@ -130,7 +130,7 @@ test.requestHooks(answerRequestLogger, authenticatorEnrollSecurityQuestionErrorM
   await enrollSecurityQuestionPage.setAnswerValue('te');
   await enrollSecurityQuestionPage.clickVerifyButton();
 
-  await t.expect(enrollSecurityQuestionPage.getAnswerInlineError()).eql('The security answer must be at least 4 characters');
+  await t.expect(enrollSecurityQuestionPage.getAnswerInlineError()).eql('The security question answer must be at least 4 characters in length');
 
   // assert that request has been made
   await t.expect(answerRequestLogger.count(() => true)).eql(1);
@@ -162,13 +162,17 @@ test.requestHooks(answerRequestLogger, authenticatorEnrollSecurityQuestionErrorM
         'errorSummary': '',
         'errorCauses': [
           {
+            'errorKey': [
+              'securityQuestion.answer.tooShort.arg'
+            ],
             'errorSummary': [
-              'The security answer must be at least 4 characters'
+              'The security question answer must be at least 4 characters in length'
             ],
             'property': 'credentials.answer'
           }
         ],
-        'errorSummaryKeys': []
+        'errorSummaryKeys': [],
+        'errorIntent': 'LOGIN',
       }
     }
   });
@@ -185,7 +189,7 @@ test.requestHooks(answerRequestLogger, authenticatorEnrollSecurityQuestionCreate
   await enrollSecurityQuestionPage.setAnswerValue('my');
   await enrollSecurityQuestionPage.clickVerifyButton();
 
-  await t.expect(enrollSecurityQuestionPage.getAnswerInlineError()).eql('The security answer must be at least 4 characters');
+  await t.expect(enrollSecurityQuestionPage.getAnswerInlineError()).eql('The security question answer must be at least 4 characters in length');
 
   await t.expect(answerRequestLogger.count(() => true)).eql(1);
   const req = answerRequestLogger.requests[0].request;
